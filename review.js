@@ -1,158 +1,323 @@
-function renderLibrary() {
-  const box = document.getElementById("libraryContent");
-  const breadcrumb = document.getElementById("libraryBreadcrumb");
-  const backBtn = document.getElementById("libraryBackBtn");
-  const q = document.getElementById("searchInput").value.trim().toLowerCase();
+function renderReviewBookSwitch() {
+  const select = document.getElementById("reviewBookSwitchSelect");
+  if (!select) return;
 
-  breadcrumb.innerHTML = "";
-  backBtn.style.visibility = state.libraryView === "books" ? "hidden" : "visible";
+  select.innerHTML = state.books
+    .map((book) => {
+      const dueCount = getListsByBookId(book.id).filter((l) => isDue(l.nextReviewAt)).length;
+      return `<option value="${book.id}" ${book.id === state.reviewBookId ? "selected" : ""}>${book.name}${dueCount ? `（${dueCount}）` : ""}</option>`;
+    })
+    .join("");
 
-  if (state.libraryView === "books") {
-    breadcrumb.innerHTML = `<span class="chip">词书</span>`;
+  if (state.reviewStage === "books") {
+    select.disabled = true;
+  } else {
+    select.disabled = false;
+  }
+}
 
-    let bookList = [...state.books];
-    if (q) {
-      bookList = bookList.filter((book) => book.name.toLowerCase().includes(q));
-    }
+function switchReviewBook(bookId) {
+  if (!bookId) return;
+  state.reviewBookId = bookId;
+  state.reviewStage = "lists";
+  state.reviewListId = null;
+  state.currentReviewWordId = null;
+  state.reviewInitialWordTotal = 0;
+  state.showAnswer = false;
+  renderReviewPage();
+}
 
-    if (!bookList.length) {
-      box.innerHTML = '<div class="muted">没有找到词书。</div>';
-      return;
-    }
+function renderReviewBookPicker() {
+  const box = document.getElementById("reviewSelectBooks");
+  const dueByBook = state.books.map((book) => {
+    const dueLists = getListsByBookId(book.id).filter((l) => isDue(l.nextReviewAt));
+    return { book, dueLists };
+  });
 
-    box.innerHTML = bookList
-      .map((book) => {
-        const childLists = getListsByBookId(book.id);
-        const wordCount = childLists.reduce((sum, l) => sum + getWordsByListId(l.id).length, 0);
-        return `
-          <div class="book-item">
-            <div><strong>${book.name}</strong></div>
-            <div class="small muted" style="margin-top:6px;">list 数：${childLists.length} ｜ 单词数：${wordCount}</div>
-            <div class="list-actions" style="margin-top:12px;">
-              <button class="blue" onclick="openBookInLibrary('${book.id}')">进入词书</button>
-              <button class="secondary" onclick="changeCurrentBook('${book.id}'); goToPage('home')">设为当前词书</button>
-              <button class="danger" onclick="deleteBook('${book.id}')">删除词书</button>
-            </div>
-          </div>
-        `;
-      })
-      .join("");
+  box.innerHTML = `
+    <div style="grid-column:1/-1;">
+      <div class="section-title" style="color:#f8fafc; margin-bottom:6px;">选择要复习的词书</div>
+      <div class="muted small">先选词书，再选这个词书下需要复习的 list。</div>
+    </div>
+    ${dueByBook
+      .map(({ book, dueLists }) => `
+        <div class="picker-item dark">
+          <div><strong>${book.name}</strong></div>
+          <div class="small muted" style="margin-top:6px;">待复习 list：${dueLists.length}</div>
+          <div class="small muted" style="margin-top:4px;">总 list：${getListsByBookId(book.id).length}</div>
+          <div class="space"></div>
+          <button class="blue" ${dueLists.length ? "" : "disabled"} onclick="openReviewLists('${book.id}')">
+            ${dueLists.length ? "选择 list" : "暂无待复习"}
+          </button>
+        </div>
+      `)
+      .join("")}
+  `;
+}
+
+function openReviewLists(bookId) {
+  state.reviewBookId = bookId;
+  state.reviewStage = "lists";
+  renderReviewPage();
+}
+
+function backToReviewBooks() {
+  state.reviewStage = "books";
+  state.reviewBookId = null;
+  state.reviewListId = null;
+  state.currentReviewWordId = null;
+  state.reviewInitialWordTotal = 0;
+  state.showAnswer = false;
+
+  document.getElementById("reviewProgressText").textContent = "00/00";
+  document.getElementById("reviewRemainingText").textContent = "00/00";
+  document.getElementById("reviewProgressFill").style.width = "0%";
+
+  renderReviewPage();
+}
+
+function renderReviewListPicker() {
+  const box = document.getElementById("reviewSelectLists");
+  const book = getBookById(state.reviewBookId);
+  if (!book) {
+    state.reviewStage = "books";
+    renderReviewPage();
     return;
   }
 
-  if (state.libraryView === "lists") {
-    const book = getBookById(state.libraryBookId);
-    if (!book) {
-      state.libraryView = "books";
-      renderLibrary();
-      return;
+  const dueLists = getListsByBookId(book.id).filter((l) => isDue(l.nextReviewAt));
+
+  box.innerHTML = `
+    <div style="grid-column:1/-1;">
+      <div class="section-title" style="color:#f8fafc; margin-bottom:6px;">选择要复习的 list</div>
+      <div class="muted small">当前词书：${book.name}</div>
+      <div class="space"></div>
+      <button class="secondary small-btn" onclick="backToReviewBooks()">返回选择词书</button>
+    </div>
+    ${
+      dueLists.length
+        ? dueLists
+            .map((list) => `
+              <div class="picker-item dark">
+                <div><strong>${list.name}</strong></div>
+                <div class="small muted" style="margin-top:6px;">单词数：${getWordsByListId(list.id).length}</div>
+                <div class="small muted" style="margin-top:4px;">下次复习：${fmt(list.nextReviewAt)}</div>
+                <div class="small muted" style="margin-top:4px;">复习阶段：${list.reviewStage + 1}</div>
+                <div class="space"></div>
+                <button class="blue" onclick="startReviewList('${list.id}')">开始复习</button>
+              </div>
+            `)
+            .join("")
+        : `<div class="muted">这个词书当前没有到期的 list。</div>`
     }
+  `;
+}
 
-    breadcrumb.innerHTML = `<span class="chip">词书</span><span>›</span><span class="chip">${book.name}</span>`;
+function startReviewList(listId) {
+  state.reviewListId = listId;
+  state.reviewStage = "reviewing";
+  const listWords = getWordsByListId(listId);
+  state.reviewInitialWordTotal = listWords.length;
+  state.currentReviewWordId = listWords[0] ? listWords[0].id : null;
+  state.showAnswer = false;
+  renderReviewPage();
+}
 
-    let targetLists = getListsByBookId(book.id);
-    if (q) {
-      targetLists = targetLists.filter((list) => list.name.toLowerCase().includes(q));
-    }
+function getCurrentReviewWord() {
+  if (!state.reviewListId) return null;
+  const listWords = getWordsByListId(state.reviewListId);
+  if (!listWords.length) return null;
 
-    if (!targetLists.length) {
-      box.innerHTML = '<div class="muted">这个词书里还没有 list。</div>';
-      return;
-    }
+  if (state.currentReviewWordId) {
+    const found = listWords.find((w) => w.id === state.currentReviewWordId);
+    if (found) return found;
+  }
 
-    box.innerHTML = targetLists
-      .map((list) => {
-        const count = getWordsByListId(list.id).length;
-        return `
-          <div class="list-item">
-            <div><strong>${list.name}</strong></div>
-            <div class="small muted" style="margin-top:6px;">单词数：${count}</div>
-            <div class="small muted" style="margin-top:4px;">下次复习：${fmt(list.nextReviewAt)}</div>
-            <div class="small muted" style="margin-top:4px;">复习阶段：${list.reviewStage + 1}</div>
-            <div class="list-actions" style="margin-top:12px;">
-              <button class="blue" onclick="openListInLibrary('${list.id}')">查看单词</button>
-              <button class="amber" onclick="resetListReview('${list.id}')">重置复习</button>
-              <button class="danger" onclick="deleteList('${list.id}')">删除 list</button>
-            </div>
-          </div>
-        `;
-      })
-      .join("");
+  state.currentReviewWordId = listWords[0].id;
+  return listWords[0];
+}
+
+function showCurrentAnswer() {
+  const current = getCurrentReviewWord();
+  if (!current) return;
+  state.showAnswer = true;
+  renderReviewPage();
+}
+
+function handleReviewAction(remembered) {
+  const current = getCurrentReviewWord();
+  if (!current || !state.showAnswer) return;
+
+  state.words = state.words.map((w) =>
+    w.id === current.id
+      ? {
+          ...w,
+          reviewCount: (w.reviewCount || 0) + 1,
+          lapseCount: remembered ? (w.lapseCount || 0) : (w.lapseCount || 0) + 1,
+          updatedAt: nowISO(),
+        }
+      : w
+  );
+
+  const listWords = getWordsByListId(state.reviewListId);
+  const currentIndex = listWords.findIndex((w) => w.id === current.id);
+
+  if (currentIndex >= listWords.length - 1) {
+    finishReviewList();
     return;
   }
 
-  if (state.libraryView === "words") {
-    const list = getListById(state.libraryListId);
-    if (!list) {
-      state.libraryView = "lists";
-      renderLibrary();
-      return;
-    }
-    const book = getBookById(list.bookId);
+  state.currentReviewWordId = listWords[currentIndex + 1].id;
+  state.showAnswer = false;
+  saveData();
+  renderReviewPage();
+  renderLibrary();
+}
 
-    breadcrumb.innerHTML = `
-      <span class="chip">词书</span><span>›</span>
-      <span class="chip">${book ? book.name : "未知词书"}</span><span>›</span>
-      <span class="chip">${list.name}</span>
-    `;
+function finishReviewList() {
+  const currentList = getListById(state.reviewListId);
+  if (!currentList) return;
 
-    let targetWords = getWordsByListId(list.id);
-    if (q) {
-      targetWords = targetWords.filter(
-        (w) =>
-          w.word.toLowerCase().includes(q) ||
-          w.meaning.toLowerCase().includes(q) ||
-          (w.example || "").toLowerCase().includes(q) ||
-          (w.note || "").toLowerCase().includes(q)
-      );
-    }
+  const listWords = getWordsByListId(state.reviewListId);
+  const totalLapses = listWords.reduce((sum, w) => sum + (w.lapseCount || 0), 0);
 
-    if (!targetWords.length) {
-      box.innerHTML = '<div class="muted">这个 list 里没有找到单词。</div>';
-      return;
-    }
-
-    box.innerHTML = targetWords
-      .map(
-        (w) => `
-          <div class="word-item">
-            <div><strong>${w.word}</strong></div>
-            <div class="muted" style="margin-top:6px;">${w.meaning}</div>
-            ${w.example ? `<div class="small muted" style="margin-top:6px;">例句：${w.example}</div>` : ""}
-            ${w.note ? `<div class="small muted" style="margin-top:4px;">备注：${w.note}</div>` : ""}
-            <div class="small muted" style="margin-top:8px;">本词复习次数：${w.reviewCount} 次</div>
-            <div class="small muted" style="margin-top:4px;">本词忘记次数：${w.lapseCount} 次</div>
-            <div class="list-actions" style="margin-top:12px;">
-              <button class="secondary" onclick="speakWord('${String(w.word).replace(/'/g, "\\'")}')">发音</button>
-              <button class="secondary" onclick="editWord('${w.id}')">编辑</button>
-              <button class="danger" onclick="deleteWord('${w.id}')">删除</button>
-            </div>
-          </div>
-        `
-      )
-      .join("");
+  let nextStage = currentList.reviewStage;
+  if (totalLapses === 0) {
+    nextStage = Math.min(currentList.reviewStage + 1, REVIEW_STEPS.length - 1);
+  } else {
+    nextStage = 1;
   }
+
+  state.lists = state.lists.map((l) =>
+    l.id === state.reviewListId
+      ? {
+          ...l,
+          reviewStage: nextStage,
+          lastReviewedAt: nowISO(),
+          nextReviewAt: nextReviewTime(nextStage, new Date()),
+        }
+      : l
+  );
+
+  saveData();
+
+  state.reviewStage = "lists";
+  state.reviewListId = null;
+  state.currentReviewWordId = null;
+  state.showAnswer = false;
+  renderApp();
 }
 
-function openBookInLibrary(bookId) {
-  state.libraryBookId = bookId;
-  state.libraryView = "lists";
-  renderLibrary();
-}
+function renderReviewPage() {
+  const booksBox = document.getElementById("reviewSelectBooks");
+  const listsBox = document.getElementById("reviewSelectLists");
+  const emptyState = document.getElementById("reviewEmptyState");
+  const card = document.getElementById("reviewCard");
+  const topTitle = document.getElementById("reviewTopTitle");
 
-function openListInLibrary(listId) {
-  state.libraryListId = listId;
-  state.libraryView = "words";
-  renderLibrary();
-}
+  booksBox.classList.add("hidden");
+  listsBox.classList.add("hidden");
+  emptyState.classList.add("hidden");
+  card.classList.add("hidden");
 
-function libraryGoBack() {
-  if (state.libraryView === "words") {
-    state.libraryView = "lists";
-    state.libraryListId = null;
-  } else if (state.libraryView === "lists") {
-    state.libraryView = "books";
-    state.libraryBookId = null;
+  renderReviewBookSwitch();
+
+  if (state.reviewStage === "books") {
+    topTitle.textContent = "先选择词书";
+    booksBox.classList.remove("hidden");
+    renderReviewBookPicker();
+    document.getElementById("reviewProgressText").textContent = "00/00";
+    document.getElementById("reviewRemainingText").textContent = "00/00";
+    document.getElementById("reviewProgressFill").style.width = "0%";
+    return;
   }
-  renderLibrary();
+
+  if (state.reviewStage === "lists") {
+    const book = getBookById(state.reviewBookId);
+    topTitle.textContent = book ? `选择 list：${book.name}` : "选择 list";
+    listsBox.classList.remove("hidden");
+    renderReviewListPicker();
+    document.getElementById("reviewProgressText").textContent = "00/00";
+    document.getElementById("reviewRemainingText").textContent = "00/00";
+    document.getElementById("reviewProgressFill").style.width = "0%";
+    return;
+  }
+
+  const current = getCurrentReviewWord();
+  const currentList = getListById(state.reviewListId);
+  const currentBook = currentList ? getBookById(currentList.bookId) : null;
+
+  if (!current || !currentList) {
+    emptyState.classList.remove("hidden");
+    topTitle.textContent = "当前 list 已复习完成";
+    document.getElementById("reviewProgressText").textContent =
+      `${pad2(state.reviewInitialWordTotal)}/${pad2(state.reviewInitialWordTotal)}`;
+    document.getElementById("reviewRemainingText").textContent =
+      `00/${pad2(state.reviewInitialWordTotal)}`;
+    document.getElementById("reviewProgressFill").style.width = "100%";
+    return;
+  }
+
+  topTitle.textContent = `${currentBook ? currentBook.name : "词书"} / ${currentList.name}`;
+  card.classList.remove("hidden");
+
+  const levelText = document.getElementById("reviewLevelText");
+  const wordText = document.getElementById("reviewWordText");
+  const answerBox = document.getElementById("reviewAnswerBox");
+  const hintBox = document.getElementById("reviewHintBox");
+
+  const meaningText = document.getElementById("reviewMeaningText");
+  const exampleWrap = document.getElementById("reviewExampleWrap");
+  const exampleText = document.getElementById("reviewExampleText");
+  const noteWrap = document.getElementById("reviewNoteWrap");
+  const noteText = document.getElementById("reviewNoteText");
+
+  const showBtn = document.getElementById("showAnswerBtn");
+  const rememberBtn = document.getElementById("rememberBtn");
+  const forgetBtn = document.getElementById("forgetBtn");
+  const speakBtn = document.getElementById("reviewSpeakBtn");
+
+  levelText.textContent = `list 阶段 ${currentList.reviewStage + 1}`;
+  wordText.textContent = current.word;
+  meaningText.textContent = current.meaning;
+  speakBtn.onclick = () => speakWord(current.word);
+
+  if (current.example) {
+    exampleWrap.style.display = "block";
+    exampleText.textContent = current.example;
+  } else {
+    exampleWrap.style.display = "none";
+  }
+
+  if (current.note) {
+    noteWrap.style.display = "block";
+    noteText.textContent = current.note;
+  } else {
+    noteWrap.style.display = "none";
+  }
+
+  if (state.showAnswer) {
+    answerBox.classList.remove("hidden");
+    hintBox.classList.add("hidden");
+    showBtn.disabled = true;
+    rememberBtn.disabled = false;
+    forgetBtn.disabled = false;
+  } else {
+    answerBox.classList.add("hidden");
+    hintBox.classList.remove("hidden");
+    showBtn.disabled = false;
+    rememberBtn.disabled = true;
+    forgetBtn.disabled = true;
+  }
+
+  const listWords = getWordsByListId(state.reviewListId);
+  const currentIndex = listWords.findIndex((w) => w.id === current.id);
+  const done = currentIndex;
+  const total = state.reviewInitialWordTotal || listWords.length;
+  const remaining = Math.max(total - done, 0);
+  const percent = total > 0 ? (done / total) * 100 : 0;
+
+  document.getElementById("reviewProgressText").textContent = `${pad2(done)}/${pad2(total)}`;
+  document.getElementById("reviewRemainingText").textContent = `${pad2(remaining)}/${pad2(total)}`;
+  document.getElementById("reviewProgressFill").style.width = `${percent}%`;
 }

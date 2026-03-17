@@ -142,6 +142,8 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
       <div class="review-page">
         <header class="review-topbar">
           <button class="secondary" onclick="goToPage('home')">退出复习</button>
+          <button class="secondary" onclick="backToReviewBooks()">切换词书</button>
+          <select id="reviewBookSwitchSelect" class="secondary" onchange="switchReviewBook(this.value)"></select>
           <div class="review-top-title" id="reviewTopTitle">先选择词书</div>
         </header>
 
