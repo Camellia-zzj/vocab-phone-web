@@ -19,6 +19,8 @@ window.state = {
   reviewListId: null,
   currentReviewWordId: null,
   reviewInitialWordTotal: 0,
+  currentReviewHadForget: false,
+  reviewQueue: [],
 };
 
 function goToPage(page) {
@@ -34,6 +36,8 @@ function goToPage(page) {
     state.reviewListId = null;
     state.currentReviewWordId = null;
     state.reviewInitialWordTotal = 0;
+    state.currentReviewHadForget = false;
+    state.reviewQueue = [];
     state.showAnswer = false;
   } else {
     document.body.classList.remove("review-mode");
@@ -128,7 +132,7 @@ function addWord() {
   const targetList = ensureTodayList(currentBook.id);
   const now = nowISO();
 
-  state.words.unshift({
+  state.words.push({
     id: uid("word"),
     listId: targetList.id,
     word,
@@ -179,7 +183,7 @@ function batchAddWords() {
 
     if (!word || !meaning) continue;
 
-    state.words.unshift({
+    state.words.push({
       id: uid("word"),
       listId: targetList.id,
       word,

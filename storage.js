@@ -40,6 +40,15 @@ function speakWord(text) {
   window.speechSynthesis.speak(utter);
 }
 
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
 function loadData() {
   const raw = localStorage.getItem(STORAGE_KEY);
 
@@ -62,7 +71,6 @@ function loadData() {
   try {
     const data = JSON.parse(raw);
 
-    // 兼容旧单文件结构
     if (!Array.isArray(data.books)) {
       const defaultBookId = uid("book");
       const defaultListId = uid("list");
@@ -178,15 +186,14 @@ function getTodayListName() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function ensureTodayList(bookId) {
-  const todayName = getTodayListName();
-  let found = state.lists.find((l) => l.bookId === bookId && l.name === todayName);
+function ensureDateList(bookId, dateName = getTodayListName()) {
+  let found = state.lists.find((l) => l.bookId === bookId && l.name === dateName);
   if (found) return found;
 
   found = {
     id: uid("list"),
     bookId,
-    name: todayName,
+    name: dateName,
     createdAt: nowISO(),
     reviewStage: 0,
     nextReviewAt: nowISO(),
@@ -198,6 +205,58 @@ function ensureTodayList(bookId) {
   return found;
 }
 
+function ensureTodayList(bookId) {
+  return ensureDateList(bookId, getTodayListName());
+}
+
 function getDueLists() {
   return state.lists.filter((l) => isDue(l.nextReviewAt));
+}
+
+function ensureWrongBook() {
+  let wrongBook = state.books.find((b) => b.name === "错词本");
+  if (!wrongBook) {
+    wrongBook = {
+      id: uid("book"),
+      name: "错词本",
+      createdAt: nowISO(),
+      isSystem: true
+    };
+    state.books.unshift(wrongBook);
+    saveData();
+  }
+  return wrongBook;
+}
+
+function addWordToWrongBook(sourceWord) {
+  if (!sourceWord) return;
+
+  const wrongBook = ensureWrongBook();
+  const targetList = ensureTodayList(wrongBook.id);
+
+  const exists = state.words.find(
+    (w) =>
+      w.listId === targetList.id &&
+      w.word.trim().toLowerCase() === String(sourceWord.word || "").trim().toLowerCase() &&
+      w.meaning.trim() === String(sourceWord.meaning || "").trim()
+  );
+
+  if (exists) return;
+
+  const now = nowISO();
+
+  state.words.unshift({
+    id: uid("word"),
+    listId: targetList.id,
+    word: sourceWord.word || "",
+    meaning: sourceWord.meaning || "",
+    example: sourceWord.example || "",
+    note: sourceWord.note || "",
+    reviewCount: 0,
+    lapseCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  saveData();
 }

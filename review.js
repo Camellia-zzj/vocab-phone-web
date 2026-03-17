@@ -1,32 +1,3 @@
-function renderReviewBookSwitch() {
-  const select = document.getElementById("reviewBookSwitchSelect");
-  if (!select) return;
-
-  select.innerHTML = state.books
-    .map((book) => {
-      const dueCount = getListsByBookId(book.id).filter((l) => isDue(l.nextReviewAt)).length;
-      return `<option value="${book.id}" ${book.id === state.reviewBookId ? "selected" : ""}>${book.name}${dueCount ? `（${dueCount}）` : ""}</option>`;
-    })
-    .join("");
-
-  if (state.reviewStage === "books") {
-    select.disabled = true;
-  } else {
-    select.disabled = false;
-  }
-}
-
-function switchReviewBook(bookId) {
-  if (!bookId) return;
-  state.reviewBookId = bookId;
-  state.reviewStage = "lists";
-  state.reviewListId = null;
-  state.currentReviewWordId = null;
-  state.reviewInitialWordTotal = 0;
-  state.showAnswer = false;
-  renderReviewPage();
-}
-
 function renderReviewBookPicker() {
   const box = document.getElementById("reviewSelectBooks");
   const dueByBook = state.books.map((book) => {
@@ -37,7 +8,7 @@ function renderReviewBookPicker() {
   box.innerHTML = `
     <div style="grid-column:1/-1;">
       <div class="section-title" style="color:#f8fafc; margin-bottom:6px;">选择要复习的词书</div>
-      <div class="muted small">先选词书，再选这个词书下需要复习的 list。</div>
+      <div class="muted small">点击对应词书，再进入该词书下需要复习的 list。</div>
     </div>
     ${dueByBook
       .map(({ book, dueLists }) => `
@@ -47,7 +18,7 @@ function renderReviewBookPicker() {
           <div class="small muted" style="margin-top:4px;">总 list：${getListsByBookId(book.id).length}</div>
           <div class="space"></div>
           <button class="blue" ${dueLists.length ? "" : "disabled"} onclick="openReviewLists('${book.id}')">
-            ${dueLists.length ? "选择 list" : "暂无待复习"}
+            ${dueLists.length ? "进入词书" : "暂无待复习"}
           </button>
         </div>
       `)
@@ -67,6 +38,8 @@ function backToReviewBooks() {
   state.reviewListId = null;
   state.currentReviewWordId = null;
   state.reviewInitialWordTotal = 0;
+  state.currentReviewHadForget = false;
+  state.reviewQueue = [];
   state.showAnswer = false;
 
   document.getElementById("reviewProgressText").textContent = "00/00";
@@ -113,28 +86,46 @@ function renderReviewListPicker() {
   `;
 }
 
+function buildReviewQueue(listId) {
+  const currentList = getListById(listId);
+  if (!currentList) return [];
+
+  let listWords = getWordsByListId(listId);
+
+  if (!currentList.lastReviewedAt) {
+    listWords = [...listWords].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  } else {
+    listWords = shuffleArray(listWords);
+  }
+
+  return listWords.map((w) => w.id);
+}
+
 function startReviewList(listId) {
   state.reviewListId = listId;
   state.reviewStage = "reviewing";
-  const listWords = getWordsByListId(listId);
-  state.reviewInitialWordTotal = listWords.length;
-  state.currentReviewWordId = listWords[0] ? listWords[0].id : null;
+  state.reviewQueue = buildReviewQueue(listId);
+  state.reviewInitialWordTotal = state.reviewQueue.length;
+  state.currentReviewWordId = state.reviewQueue[0] || null;
+  state.currentReviewHadForget = false;
   state.showAnswer = false;
   renderReviewPage();
 }
 
 function getCurrentReviewWord() {
   if (!state.reviewListId) return null;
-  const listWords = getWordsByListId(state.reviewListId);
-  if (!listWords.length) return null;
+  if (!state.reviewQueue || !state.reviewQueue.length) return null;
 
   if (state.currentReviewWordId) {
-    const found = listWords.find((w) => w.id === state.currentReviewWordId);
+    const found = state.words.find((w) => w.id === state.currentReviewWordId);
     if (found) return found;
   }
 
-  state.currentReviewWordId = listWords[0].id;
-  return listWords[0];
+  const firstId = state.reviewQueue[0];
+  state.currentReviewWordId = firstId || null;
+  return state.words.find((w) => w.id === firstId) || null;
 }
 
 function showCurrentAnswer() {
@@ -148,6 +139,11 @@ function handleReviewAction(remembered) {
   const current = getCurrentReviewWord();
   if (!current || !state.showAnswer) return;
 
+  if (!remembered) {
+    state.currentReviewHadForget = true;
+    addWordToWrongBook(current);
+  }
+
   state.words = state.words.map((w) =>
     w.id === current.id
       ? {
@@ -159,15 +155,14 @@ function handleReviewAction(remembered) {
       : w
   );
 
-  const listWords = getWordsByListId(state.reviewListId);
-  const currentIndex = listWords.findIndex((w) => w.id === current.id);
+  const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
 
-  if (currentIndex >= listWords.length - 1) {
+  if (currentIndex >= state.reviewQueue.length - 1) {
     finishReviewList();
     return;
   }
 
-  state.currentReviewWordId = listWords[currentIndex + 1].id;
+  state.currentReviewWordId = state.reviewQueue[currentIndex + 1];
   state.showAnswer = false;
   saveData();
   renderReviewPage();
@@ -178,14 +173,11 @@ function finishReviewList() {
   const currentList = getListById(state.reviewListId);
   if (!currentList) return;
 
-  const listWords = getWordsByListId(state.reviewListId);
-  const totalLapses = listWords.reduce((sum, w) => sum + (w.lapseCount || 0), 0);
-
   let nextStage = currentList.reviewStage;
-  if (totalLapses === 0) {
-    nextStage = Math.min(currentList.reviewStage + 1, REVIEW_STEPS.length - 1);
-  } else {
+  if (state.currentReviewHadForget) {
     nextStage = 1;
+  } else {
+    nextStage = Math.min(currentList.reviewStage + 1, REVIEW_STEPS.length - 1);
   }
 
   state.lists = state.lists.map((l) =>
@@ -204,6 +196,8 @@ function finishReviewList() {
   state.reviewStage = "lists";
   state.reviewListId = null;
   state.currentReviewWordId = null;
+  state.currentReviewHadForget = false;
+  state.reviewQueue = [];
   state.showAnswer = false;
   renderApp();
 }
@@ -220,10 +214,8 @@ function renderReviewPage() {
   emptyState.classList.add("hidden");
   card.classList.add("hidden");
 
-  renderReviewBookSwitch();
-
   if (state.reviewStage === "books") {
-    topTitle.textContent = "先选择词书";
+    topTitle.textContent = "选择要复习的词书";
     booksBox.classList.remove("hidden");
     renderReviewBookPicker();
     document.getElementById("reviewProgressText").textContent = "00/00";
@@ -310,10 +302,9 @@ function renderReviewPage() {
     forgetBtn.disabled = true;
   }
 
-  const listWords = getWordsByListId(state.reviewListId);
-  const currentIndex = listWords.findIndex((w) => w.id === current.id);
-  const done = currentIndex;
-  const total = state.reviewInitialWordTotal || listWords.length;
+  const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
+  const done = Math.max(currentIndex, 0);
+  const total = state.reviewInitialWordTotal || state.reviewQueue.length;
   const remaining = Math.max(total - done, 0);
   const percent = total > 0 ? (done / total) * 100 : 0;
 
