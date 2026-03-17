@@ -15,29 +15,68 @@ function renderLibrary() {
       bookList = bookList.filter((book) => book.name.toLowerCase().includes(q));
     }
 
-    if (!bookList.length) {
-      box.innerHTML = '<div class="muted">没有找到词书。</div>';
-      return;
-    }
+    const wrongBook = bookList.find((book) => book.name === "错词本");
+    const normalBooks = bookList.filter((book) => book.name !== "错词本");
 
-    box.innerHTML = bookList
-      .map((book) => {
-        const childLists = getListsByBookId(book.id);
-        const wordCount = childLists.reduce((sum, l) => sum + getWordsByListId(l.id).length, 0);
-        const wrongBadge = book.name === "错词本" ? '<span class="book-badge-wrong">错词本</span>' : "";
-        return `
-          <div class="book-item">
-            <div><strong>${book.name}</strong>${wrongBadge}</div>
-            <div class="small muted" style="margin-top:6px;">list 数：${childLists.length} ｜ 单词数：${wordCount}</div>
-            <div class="list-actions" style="margin-top:12px;">
-              <button class="blue" onclick="openBookInLibrary('${book.id}')">进入词书</button>
-              <button class="secondary" onclick="changeCurrentBook('${book.id}'); goToPage('home')">设为当前词书</button>
-              <button class="danger" onclick="deleteBook('${book.id}')">删除词书</button>
-            </div>
-          </div>
-        `;
-      })
-      .join("");
+    let html = "";
+
+    html += `
+      <div class="library-block">
+        <div class="section-title">普通词书</div>
+        ${
+          normalBooks.length
+            ? normalBooks
+                .map((book) => {
+                  const childLists = getListsByBookId(book.id);
+                  const wordCount = childLists.reduce((sum, l) => sum + getWordsByListId(l.id).length, 0);
+                  return `
+                    <div class="book-item">
+                      <div><strong>${book.name}</strong></div>
+                      <div class="small muted" style="margin-top:6px;">list 数：${childLists.length} ｜ 单词数：${wordCount}</div>
+                      <div class="list-actions" style="margin-top:12px;">
+                        <button class="blue" onclick="openBookInLibrary('${book.id}')">进入词书</button>
+                        <button class="secondary" onclick="changeCurrentBook('${book.id}'); goToPage('home')">设为当前词书</button>
+                        <button class="danger" onclick="deleteBook('${book.id}')">删除词书</button>
+                      </div>
+                    </div>
+                  `;
+                })
+                .join("")
+            : `<div class="muted">没有找到普通词书。</div>`
+        }
+      </div>
+    `;
+
+    html += `<div class="space"></div>`;
+
+    html += `
+      <div class="library-block wrong-book-panel">
+        <div class="section-title">错词本</div>
+        <div class="wrong-book-desc">
+          自动收集你在复习时点“× 我忘记”的单词。你可以进入错词本删除误加的单词。
+        </div>
+        ${
+          wrongBook
+            ? (() => {
+                const childLists = getListsByBookId(wrongBook.id);
+                const wordCount = childLists.reduce((sum, l) => sum + getWordsByListId(l.id).length, 0);
+                return `
+                  <div class="book-item wrong-book-card">
+                    <div><strong>${wrongBook.name}</strong><span class="book-badge-wrong">系统词书</span></div>
+                    <div class="small muted" style="margin-top:6px;">list 数：${childLists.length} ｜ 单词数：${wordCount}</div>
+                    <div class="list-actions" style="margin-top:12px;">
+                      <button class="blue" onclick="openBookInLibrary('${wrongBook.id}')">进入错词本</button>
+                      <button class="secondary" onclick="changeCurrentBook('${wrongBook.id}'); goToPage('home')">设为当前词书</button>
+                    </div>
+                  </div>
+                `;
+              })()
+            : `<div class="muted">当前还没有错词本内容。</div>`
+        }
+      </div>
+    `;
+
+    box.innerHTML = html;
     return;
   }
 
