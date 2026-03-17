@@ -24,9 +24,10 @@ function renderLibrary() {
       .map((book) => {
         const childLists = getListsByBookId(book.id);
         const wordCount = childLists.reduce((sum, l) => sum + getWordsByListId(l.id).length, 0);
+        const wrongBadge = book.name === "错词本" ? '<span class="book-badge-wrong">错词本</span>' : "";
         return `
           <div class="book-item">
-            <div><strong>${book.name}</strong></div>
+            <div><strong>${book.name}</strong>${wrongBadge}</div>
             <div class="small muted" style="margin-top:6px;">list 数：${childLists.length} ｜ 单词数：${wordCount}</div>
             <div class="list-actions" style="margin-top:12px;">
               <button class="blue" onclick="openBookInLibrary('${book.id}')">进入词书</button>

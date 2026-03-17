@@ -258,6 +258,23 @@ button.amber {
   margin-left: 8px;
 }
 
+.book-badge-wrong {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.book-note-wrong {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #9f1239;
+}
+
 .space { height: 12px; }
 
 .breadcrumb {
