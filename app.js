@@ -1,287 +1,477 @@
-function renderReviewBookPicker() {
-  const box = document.getElementById("reviewSelectBooks");
-  const dueByBook = state.books.map((book) => {
-    const dueLists = getListsByBookId(book.id).filter((l) => isDue(l.nextReviewAt));
-    return { book, dueLists };
-  });
+window.state = {
+  books: [],
+  lists: [],
+  words: [],
+  currentBookId: null,
 
-  box.innerHTML = `
-    <div style="grid-column:1/-1;">
-      <div class="section-title" style="color:#f8fafc; margin-bottom:6px;">选择要复习的词书</div>
-      <div class="muted small">先选词书，再选这个词书下需要复习的 list。</div>
-    </div>
-    ${dueByBook
-      .map(({ book, dueLists }) => `
-        <div class="picker-item dark">
-          <div><strong>${book.name}</strong></div>
-          <div class="small muted" style="margin-top:6px;">待复习 list：${dueLists.length}</div>
-          <div class="small muted" style="margin-top:4px;">总 list：${getListsByBookId(book.id).length}</div>
-          <div class="space"></div>
-          <button class="blue" ${dueLists.length ? "" : "disabled"} onclick="openReviewLists('${book.id}')">
-            ${dueLists.length ? "选择 list" : "暂无待复习"}
-          </button>
-        </div>
-      `)
-      .join("")}
-  `;
-}
+  currentPage: "home",
+  showAnswer: false,
 
-function openReviewLists(bookId) {
-  state.reviewBookId = bookId;
-  state.reviewStage = "lists";
-  renderReviewPage();
-}
+  editingWordId: null,
+  pendingDelete: null,
 
-function backToReviewBooks() {
-  state.reviewStage = "books";
-  state.reviewBookId = null;
-  state.reviewListId = null;
-  state.currentReviewWordId = null;
-  state.reviewInitialWordTotal = 0;
-  state.showAnswer = false;
-  renderReviewPage();
-}
+  libraryView: "books",
+  libraryBookId: null,
+  libraryListId: null,
 
-function renderReviewListPicker() {
-  const box = document.getElementById("reviewSelectLists");
-  const book = getBookById(state.reviewBookId);
-  if (!book) {
+  reviewStage: "books",
+  reviewBookId: null,
+  reviewListId: null,
+  currentReviewWordId: null,
+  reviewInitialWordTotal: 0,
+};
+
+function goToPage(page) {
+  state.currentPage = page;
+
+  document.querySelectorAll(".page").forEach((el) => el.classList.remove("active"));
+  document.getElementById(`page-${page}`).classList.add("active");
+
+  if (page === "review") {
+    document.body.classList.add("review-mode");
     state.reviewStage = "books";
-    renderReviewPage();
+    state.reviewBookId = null;
+    state.reviewListId = null;
+    state.currentReviewWordId = null;
+    state.reviewInitialWordTotal = 0;
+    state.showAnswer = false;
+  } else {
+    document.body.classList.remove("review-mode");
+  }
+
+  if (page === "library") {
+    state.libraryView = "books";
+    state.libraryBookId = null;
+    state.libraryListId = null;
+  }
+
+  renderApp();
+  window.scrollTo(0, 0);
+}
+
+function renderHomeStats() {
+  document.getElementById("bookCount").textContent = state.books.length;
+  document.getElementById("listCount").textContent = state.lists.length;
+  document.getElementById("wordCount").textContent = state.words.length;
+  document.getElementById("dueListCount").textContent = getDueLists().length;
+}
+
+function renderCurrentBookPanel() {
+  const select = document.getElementById("currentBookSelect");
+  const summary = document.getElementById("currentBookSummary");
+  if (!select) return;
+
+  select.innerHTML = state.books
+    .map(
+      (book) =>
+        `<option value="${book.id}" ${book.id === state.currentBookId ? "selected" : ""}>${book.name}</option>`
+    )
+    .join("");
+
+  const currentBook = getCurrentBook();
+  if (!currentBook) {
+    summary.textContent = "当前没有词书";
     return;
   }
 
-  const dueLists = getListsByBookId(book.id).filter((l) => isDue(l.nextReviewAt));
-
-  box.innerHTML = `
-    <div style="grid-column:1/-1;">
-      <div class="section-title" style="color:#f8fafc; margin-bottom:6px;">选择要复习的 list</div>
-      <div class="muted small">当前词书：${book.name}</div>
-      <div class="space"></div>
-      <button class="secondary small-btn" onclick="backToReviewBooks()">返回选择词书</button>
-    </div>
-    ${
-      dueLists.length
-        ? dueLists
-            .map((list) => `
-              <div class="picker-item dark">
-                <div><strong>${list.name}</strong></div>
-                <div class="small muted" style="margin-top:6px;">单词数：${getWordsByListId(list.id).length}</div>
-                <div class="small muted" style="margin-top:4px;">下次复习：${fmt(list.nextReviewAt)}</div>
-                <div class="small muted" style="margin-top:4px;">复习阶段：${list.reviewStage + 1}</div>
-                <div class="space"></div>
-                <button class="blue" onclick="startReviewList('${list.id}')">开始复习</button>
-              </div>
-            `)
-            .join("")
-        : `<div class="muted">这个词书当前没有到期的 list。</div>`
-    }
-  `;
+  const bookLists = getListsByBookId(currentBook.id);
+  const count = bookLists.reduce((sum, list) => sum + getWordsByListId(list.id).length, 0);
+  summary.textContent = `当前词书：${currentBook.name} ｜ list 数：${bookLists.length} ｜ 单词数：${count}`;
 }
 
-function startReviewList(listId) {
-  state.reviewListId = listId;
-  state.reviewStage = "reviewing";
-  const listWords = getWordsByListId(listId);
-  state.reviewInitialWordTotal = listWords.length;
-  state.currentReviewWordId = listWords[0] ? listWords[0].id : null;
-  state.showAnswer = false;
-  renderReviewPage();
-}
+function createBook() {
+  const input = document.getElementById("newBookNameInput");
+  const name = input.value.trim();
 
-function getCurrentReviewWord() {
-  if (!state.reviewListId) return null;
-  const listWords = getWordsByListId(state.reviewListId);
-  if (!listWords.length) return null;
-
-  if (state.currentReviewWordId) {
-    const found = listWords.find((w) => w.id === state.currentReviewWordId);
-    if (found) return found;
+  if (!name) {
+    alert("请输入词书名称");
+    return;
   }
 
-  state.currentReviewWordId = listWords[0].id;
-  return listWords[0];
+  const newBook = {
+    id: uid("book"),
+    name,
+    createdAt: nowISO(),
+  };
+
+  state.books.unshift(newBook);
+  state.currentBookId = newBook.id;
+  input.value = "";
+
+  saveData();
+  renderApp();
 }
 
-function showCurrentAnswer() {
-  const current = getCurrentReviewWord();
-  if (!current) return;
-  state.showAnswer = true;
-  renderReviewPage();
+function changeCurrentBook(bookId) {
+  state.currentBookId = bookId;
+  saveData();
+  renderApp();
 }
 
-function handleReviewAction(remembered) {
-  const current = getCurrentReviewWord();
-  if (!current || !state.showAnswer) return;
+function addWord() {
+  const currentBook = getCurrentBook();
+  if (!currentBook) {
+    alert("请先创建词书");
+    return;
+  }
+
+  const word = document.getElementById("wordInput").value.trim();
+  const meaning = document.getElementById("meaningInput").value.trim();
+  const example = document.getElementById("exampleInput").value.trim();
+  const note = document.getElementById("noteInput").value.trim();
+
+  if (!word || !meaning) {
+    alert("单词和释义必须填写");
+    return;
+  }
+
+  const targetList = ensureTodayList(currentBook.id);
+  const now = nowISO();
+
+  state.words.unshift({
+    id: uid("word"),
+    listId: targetList.id,
+    word,
+    meaning,
+    example,
+    note,
+    reviewCount: 0,
+    lapseCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  document.getElementById("wordInput").value = "";
+  document.getElementById("meaningInput").value = "";
+  document.getElementById("exampleInput").value = "";
+  document.getElementById("noteInput").value = "";
+
+  saveData();
+  renderApp();
+}
+
+function batchAddWords() {
+  const currentBook = getCurrentBook();
+  if (!currentBook) {
+    alert("请先创建词书");
+    return;
+  }
+
+  const text = document.getElementById("batchInput").value.trim();
+
+  if (!text) {
+    alert("请先粘贴要导入的内容");
+    return;
+  }
+
+  const targetList = ensureTodayList(currentBook.id);
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+
+  let successCount = 0;
+  const now = nowISO();
+
+  for (const line of lines) {
+    const parts = line.split("|").map((part) => part.trim());
+    const word = parts[0] || "";
+    const meaning = parts[1] || "";
+    const example = parts[2] || "";
+    const note = parts[3] || "";
+
+    if (!word || !meaning) continue;
+
+    state.words.unshift({
+      id: uid("word"),
+      listId: targetList.id,
+      word,
+      meaning,
+      example,
+      note,
+      reviewCount: 0,
+      lapseCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    successCount++;
+  }
+
+  if (successCount === 0) {
+    alert("没有成功导入任何单词，请检查格式");
+    return;
+  }
+
+  document.getElementById("batchInput").value = "";
+  saveData();
+  renderApp();
+  alert(`成功导入 ${successCount} 个单词到 ${targetList.name}`);
+}
+
+function clearBatchInput() {
+  document.getElementById("batchInput").value = "";
+}
+
+function triggerImport() {
+  document.getElementById("importFile").click();
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function () {
+    try {
+      const data = JSON.parse(reader.result);
+
+      if (!Array.isArray(data.books) || !Array.isArray(data.lists) || !Array.isArray(data.words)) {
+        alert("备份文件格式不对");
+        return;
+      }
+
+      state.books = data.books;
+      state.lists = data.lists;
+      state.words = data.words;
+      state.currentBookId = data.currentBookId || (state.books[0] ? state.books[0].id : null);
+
+      saveData();
+      renderApp();
+      alert("导入成功");
+    } catch {
+      alert("导入失败，JSON 文件有问题");
+    }
+  };
+  reader.readAsText(file, "utf-8");
+}
+
+function exportData() {
+  const blob = new Blob(
+    [JSON.stringify({
+      books: state.books,
+      lists: state.lists,
+      words: state.words,
+      currentBookId: state.currentBookId
+    }, null, 2)],
+    { type: "application/json" }
+  );
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "vocab-book-list-word-backup.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function speakEditWord() {
+  speakWord(document.getElementById("editWordInput").value.trim());
+}
+
+function editWord(wordId) {
+  const target = state.words.find((w) => w.id === wordId);
+  if (!target) return;
+
+  state.editingWordId = wordId;
+  document.getElementById("editWordInput").value = target.word || "";
+  document.getElementById("editMeaningInput").value = target.meaning || "";
+  document.getElementById("editExampleInput").value = target.example || "";
+  document.getElementById("editNoteInput").value = target.note || "";
+  document.getElementById("editWordModal").classList.remove("hidden");
+  document.getElementById("editWordInput").focus();
+}
+
+function closeEditModal() {
+  document.getElementById("editWordModal").classList.add("hidden");
+  state.editingWordId = null;
+}
+
+function saveEditedWord() {
+  if (!state.editingWordId) return;
+
+  const newWord = document.getElementById("editWordInput").value.trim();
+  const newMeaning = document.getElementById("editMeaningInput").value.trim();
+  const newExample = document.getElementById("editExampleInput").value.trim();
+  const newNote = document.getElementById("editNoteInput").value.trim();
+
+  if (!newWord || !newMeaning) {
+    alert("单词和释义不能为空");
+    return;
+  }
+
+  const now = nowISO();
 
   state.words = state.words.map((w) =>
-    w.id === current.id
+    w.id === state.editingWordId
       ? {
           ...w,
-          reviewCount: (w.reviewCount || 0) + 1,
-          lapseCount: remembered ? (w.lapseCount || 0) : (w.lapseCount || 0) + 1,
-          updatedAt: nowISO(),
+          word: newWord,
+          meaning: newMeaning,
+          example: newExample,
+          note: newNote,
+          updatedAt: now,
         }
       : w
   );
 
-  const listWords = getWordsByListId(state.reviewListId);
-  const currentIndex = listWords.findIndex((w) => w.id === current.id);
-
-  if (currentIndex >= listWords.length - 1) {
-    finishReviewList();
-    return;
-  }
-
-  state.currentReviewWordId = listWords[currentIndex + 1].id;
-  state.showAnswer = false;
   saveData();
-  renderReviewPage();
-  renderLibrary();
-}
-
-function finishReviewList() {
-  const currentList = getListById(state.reviewListId);
-  if (!currentList) return;
-
-  const listWords = getWordsByListId(state.reviewListId);
-  const totalLapses = listWords.reduce((sum, w) => sum + (w.lapseCount || 0), 0);
-
-  let nextStage = currentList.reviewStage;
-  if (totalLapses === 0) {
-    nextStage = Math.min(currentList.reviewStage + 1, REVIEW_STEPS.length - 1);
-  } else {
-    nextStage = 1;
-  }
-
-  state.lists = state.lists.map((l) =>
-    l.id === state.reviewListId
-      ? {
-          ...l,
-          reviewStage: nextStage,
-          lastReviewedAt: nowISO(),
-          nextReviewAt: nextReviewTime(nextStage, new Date()),
-        }
-      : l
-  );
-
-  saveData();
-
-  state.reviewStage = "lists";
-  state.reviewListId = null;
-  state.currentReviewWordId = null;
-  state.showAnswer = false;
+  closeEditModal();
   renderApp();
 }
 
-function renderReviewPage() {
-  const booksBox = document.getElementById("reviewSelectBooks");
-  const listsBox = document.getElementById("reviewSelectLists");
-  const emptyState = document.getElementById("reviewEmptyState");
-  const card = document.getElementById("reviewCard");
-  const topTitle = document.getElementById("reviewTopTitle");
-
-  booksBox.classList.add("hidden");
-  listsBox.classList.add("hidden");
-  emptyState.classList.add("hidden");
-  card.classList.add("hidden");
-
-  if (state.reviewStage === "books") {
-    topTitle.textContent = "先选择词书";
-    booksBox.classList.remove("hidden");
-    renderReviewBookPicker();
-    document.getElementById("reviewProgressText").textContent = "00/00";
-    document.getElementById("reviewRemainingText").textContent = "00/00";
-    document.getElementById("reviewProgressFill").style.width = "0%";
-    return;
-  }
-
-  if (state.reviewStage === "lists") {
-    const book = getBookById(state.reviewBookId);
-    topTitle.textContent = book ? `选择 list：${book.name}` : "选择 list";
-    listsBox.classList.remove("hidden");
-    renderReviewListPicker();
-    document.getElementById("reviewProgressText").textContent = "00/00";
-    document.getElementById("reviewRemainingText").textContent = "00/00";
-    document.getElementById("reviewProgressFill").style.width = "0%";
-    return;
-  }
-
-  const current = getCurrentReviewWord();
-  const currentList = getListById(state.reviewListId);
-  const currentBook = currentList ? getBookById(currentList.bookId) : null;
-
-  if (!current || !currentList) {
-    emptyState.classList.remove("hidden");
-    topTitle.textContent = "当前 list 已复习完成";
-    document.getElementById("reviewProgressText").textContent =
-      `${pad2(state.reviewInitialWordTotal)}/${pad2(state.reviewInitialWordTotal)}`;
-    document.getElementById("reviewRemainingText").textContent =
-      `00/${pad2(state.reviewInitialWordTotal)}`;
-    document.getElementById("reviewProgressFill").style.width = "100%";
-    return;
-  }
-
-  topTitle.textContent = `${currentBook ? currentBook.name : "词书"} / ${currentList.name}`;
-  card.classList.remove("hidden");
-
-  const levelText = document.getElementById("reviewLevelText");
-  const wordText = document.getElementById("reviewWordText");
-  const answerBox = document.getElementById("reviewAnswerBox");
-  const hintBox = document.getElementById("reviewHintBox");
-
-  const meaningText = document.getElementById("reviewMeaningText");
-  const exampleWrap = document.getElementById("reviewExampleWrap");
-  const exampleText = document.getElementById("reviewExampleText");
-  const noteWrap = document.getElementById("reviewNoteWrap");
-  const noteText = document.getElementById("reviewNoteText");
-
-  const showBtn = document.getElementById("showAnswerBtn");
-  const rememberBtn = document.getElementById("rememberBtn");
-  const forgetBtn = document.getElementById("forgetBtn");
-  const speakBtn = document.getElementById("reviewSpeakBtn");
-
-  levelText.textContent = `list 阶段 ${currentList.reviewStage + 1}`;
-  wordText.textContent = current.word;
-  meaningText.textContent = current.meaning;
-  speakBtn.onclick = () => speakWord(current.word);
-
-  if (current.example) {
-    exampleWrap.style.display = "block";
-    exampleText.textContent = current.example;
-  } else {
-    exampleWrap.style.display = "none";
-  }
-
-  if (current.note) {
-    noteWrap.style.display = "block";
-    noteText.textContent = current.note;
-  } else {
-    noteWrap.style.display = "none";
-  }
-
-  if (state.showAnswer) {
-    answerBox.classList.remove("hidden");
-    hintBox.classList.add("hidden");
-    showBtn.disabled = true;
-    rememberBtn.disabled = false;
-    forgetBtn.disabled = false;
-  } else {
-    answerBox.classList.add("hidden");
-    hintBox.classList.remove("hidden");
-    showBtn.disabled = false;
-    rememberBtn.disabled = true;
-    forgetBtn.disabled = true;
-  }
-
-  const listWords = getWordsByListId(state.reviewListId);
-  const currentIndex = listWords.findIndex((w) => w.id === current.id);
-  const done = currentIndex;
-  const total = state.reviewInitialWordTotal || listWords.length;
-  const remaining = Math.max(total - done, 0);
-  const percent = total > 0 ? (done / total) * 100 : 0;
-
-  document.getElementById("reviewProgressText").textContent = `${pad2(done)}/${pad2(total)}`;
-  document.getElementById("reviewRemainingText").textContent = `${pad2(remaining)}/${pad2(total)}`;
-  document.getElementById("reviewProgressFill").style.width = `${percent}%`;
+function requestDelete(type, id, text) {
+  state.pendingDelete = { type, id };
+  document.getElementById("deleteConfirmText").textContent = text;
+  document.getElementById("deleteConfirmModal").classList.remove("hidden");
 }
+
+function closeDeleteModal() {
+  document.getElementById("deleteConfirmModal").classList.add("hidden");
+  state.pendingDelete = null;
+}
+
+function confirmDeleteEntity() {
+  if (!state.pendingDelete) return;
+
+  const { type, id } = state.pendingDelete;
+
+  if (type === "word") {
+    state.words = state.words.filter((w) => w.id !== id);
+  }
+
+  if (type === "list") {
+    state.words = state.words.filter((w) => w.listId !== id);
+    state.lists = state.lists.filter((l) => l.id !== id);
+    if (state.libraryListId === id) state.libraryListId = null;
+    if (state.reviewListId === id) state.reviewListId = null;
+  }
+
+  if (type === "book") {
+    const targetLists = state.lists.filter((l) => l.bookId === id).map((l) => l.id);
+    state.words = state.words.filter((w) => !targetLists.includes(w.listId));
+    state.lists = state.lists.filter((l) => l.bookId !== id);
+    state.books = state.books.filter((b) => b.id !== id);
+
+    if (state.currentBookId === id) {
+      state.currentBookId = state.books[0] ? state.books[0].id : null;
+    }
+
+    if (state.libraryBookId === id) state.libraryBookId = null;
+    if (state.reviewBookId === id) state.reviewBookId = null;
+  }
+
+  saveData();
+  closeDeleteModal();
+  renderApp();
+}
+
+function deleteWord(wordId) {
+  requestDelete("word", wordId, "确定要删除这个单词吗？删除后将无法恢复。");
+}
+
+function deleteList(listId) {
+  const list = getListById(listId);
+  if (!list) return;
+  requestDelete(
+    "list",
+    listId,
+    `确定要删除 list「${list.name}」吗？这个 list 里的单词也会一起删除。`
+  );
+}
+
+function deleteBook(bookId) {
+  const book = getBookById(bookId);
+  if (!book) return;
+  requestDelete(
+    "book",
+    bookId,
+    `确定要删除词书「${book.name}」吗？里面的所有 list 和单词都会一起删除。`
+  );
+}
+
+function resetListReview(listId) {
+  state.lists = state.lists.map((l) =>
+    l.id === listId
+      ? {
+          ...l,
+          reviewStage: 0,
+          nextReviewAt: nowISO(),
+          lastReviewedAt: null,
+        }
+      : l
+  );
+  saveData();
+  renderApp();
+}
+
+function clearAllReviewRecords() {
+  if (!confirm("确定要清除所有 list 的复习进度吗？")) return;
+
+  state.lists = state.lists.map((l) => ({
+    ...l,
+    reviewStage: 0,
+    nextReviewAt: nowISO(),
+    lastReviewedAt: null,
+  }));
+
+  state.words = state.words.map((w) => ({
+    ...w,
+    reviewCount: 0,
+    lapseCount: 0,
+  }));
+
+  saveData();
+  renderApp();
+}
+
+function renderApp() {
+  renderHomeStats();
+  renderCurrentBookPanel();
+  renderLibrary();
+
+  if (state.currentPage === "review") {
+    renderReviewPage();
+  }
+}
+
+document.getElementById("importFile").addEventListener("change", importData);
+
+document.addEventListener("keydown", (e) => {
+  const editModal = document.getElementById("editWordModal");
+  const deleteModal = document.getElementById("deleteConfirmModal");
+
+  if (e.key === "Escape") {
+    if (!editModal.classList.contains("hidden")) {
+      closeEditModal();
+      return;
+    }
+    if (!deleteModal.classList.contains("hidden")) {
+      closeDeleteModal();
+      return;
+    }
+  }
+
+  if (state.currentPage !== "review" || state.reviewStage !== "reviewing") return;
+
+  const activeTag = document.activeElement ? document.activeElement.tagName : "";
+  const isTyping = activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT";
+  if (isTyping) return;
+
+  if (e.key === "Escape") {
+    goToPage("home");
+  } else if (e.key === " " || e.code === "Space") {
+    e.preventDefault();
+    showCurrentAnswer();
+  } else if (e.key === "1") {
+    handleReviewAction(false);
+  } else if (e.key === "2") {
+    handleReviewAction(true);
+  }
+});
+
+(function init() {
+  const data = loadData();
+  state.books = data.books || [];
+  state.lists = data.lists || [];
+  state.words = data.words || [];
+  state.currentBookId = data.currentBookId || (state.books[0] ? state.books[0].id : null);
+
+  renderApp();
+})();
