@@ -182,18 +182,29 @@ async function speakWord(text) {
 ========================= */
 
 function focusWordInputAfterSave() {
+  const addCard =
+    document.querySelector("#page-home .card") ||
+    document.querySelector(".card");
   const wordInput = document.getElementById("wordInput");
+
   if (!wordInput) return;
 
+  // 先把添加单词模块尽量顶到页面上方
   setTimeout(() => {
     try {
-      wordInput.scrollIntoView({
-        behavior: "auto",
-        block: "center"
-      });
+      if (addCard) {
+        const rect = addCard.getBoundingClientRect();
+        const absoluteTop = window.scrollY + rect.top;
+        const topOffset = 8; // 顶部留一点空隙，别贴太死
+        window.scrollTo({
+          top: Math.max(0, absoluteTop - topOffset),
+          behavior: "auto"
+        });
+      }
     } catch {}
-  }, 60);
+  }, 40);
 
+  // 再聚焦单词输入框，弹出键盘
   setTimeout(() => {
     try {
       wordInput.focus({ preventScroll: true });
@@ -205,7 +216,7 @@ function focusWordInputAfterSave() {
       const len = wordInput.value.length;
       wordInput.setSelectionRange(len, len);
     } catch {}
-  }, 180);
+  }, 140);
 }
 
 function goToPage(page) {
