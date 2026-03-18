@@ -23,9 +23,9 @@ window.state = {
   reviewQueue: [],
 };
 
+
 /* =========================
    发音：词典音频优先，系统发音兜底
-   只改 app.js 即可，因为这里会覆盖 storage.js 里的 speakWord
 ========================= */
 
 const WORD_AUDIO_CACHE = new Map();
@@ -127,7 +127,6 @@ async function playAudioUrl(url, fallbackText) {
       currentAudio = audio;
 
       let settled = false;
-
       const finish = (ok) => {
         if (settled) return;
         settled = true;
@@ -135,7 +134,6 @@ async function playAudioUrl(url, fallbackText) {
       };
 
       audio.onended = () => finish(true);
-
       audio.onerror = () => {
         stopCurrentAudio();
         if (fallbackText) speakBySystemVoice(fallbackText);
@@ -143,7 +141,6 @@ async function playAudioUrl(url, fallbackText) {
       };
 
       const playPromise = audio.play();
-
       if (playPromise && typeof playPromise.then === "function") {
         playPromise
           .then(() => finish(true))
@@ -172,13 +169,43 @@ async function speakWord(text) {
   } catch {}
 
   const audioUrl = await getDictionaryAudioUrl(word);
-
   if (audioUrl) {
     await playAudioUrl(audioUrl, word);
     return;
   }
 
   speakBySystemVoice(word);
+}
+
+/* =========================
+   手机连续录词优化：保存后回到输入区并重新弹出键盘
+========================= */
+
+function focusWordInputAfterSave() {
+  const wordInput = document.getElementById("wordInput");
+  if (!wordInput) return;
+
+  setTimeout(() => {
+    try {
+      wordInput.scrollIntoView({
+        behavior: "auto",
+        block: "center"
+      });
+    } catch {}
+  }, 60);
+
+  setTimeout(() => {
+    try {
+      wordInput.focus({ preventScroll: true });
+    } catch {
+      wordInput.focus();
+    }
+
+    try {
+      const len = wordInput.value.length;
+      wordInput.setSelectionRange(len, len);
+    } catch {}
+  }, 180);
 }
 
 function goToPage(page) {
@@ -280,10 +307,15 @@ function addWord() {
     return;
   }
 
-  const word = document.getElementById("wordInput").value.trim();
-  const meaning = document.getElementById("meaningInput").value.trim();
-  const example = document.getElementById("exampleInput").value.trim();
-  const note = document.getElementById("noteInput").value.trim();
+  const wordInput = document.getElementById("wordInput");
+  const meaningInput = document.getElementById("meaningInput");
+  const exampleInput = document.getElementById("exampleInput");
+  const noteInput = document.getElementById("noteInput");
+
+  const word = wordInput.value.trim();
+  const meaning = meaningInput.value.trim();
+  const example = exampleInput.value.trim();
+  const note = noteInput.value.trim();
 
   if (!word || !meaning) {
     alert("单词和释义必须填写");
@@ -306,13 +338,14 @@ function addWord() {
     updatedAt: now,
   });
 
-  document.getElementById("wordInput").value = "";
-  document.getElementById("meaningInput").value = "";
-  document.getElementById("exampleInput").value = "";
-  document.getElementById("noteInput").value = "";
+  wordInput.value = "";
+  meaningInput.value = "";
+  exampleInput.value = "";
+  noteInput.value = "";
 
   saveData();
   renderApp();
+  focusWordInputAfterSave();
 }
 
 function batchAddWords() {
