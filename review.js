@@ -38,9 +38,8 @@ function backToReviewBooks() {
   state.reviewListId = null;
   state.currentReviewWordId = null;
   state.reviewInitialWordTotal = 0;
-  state.reviewCompletedCount = 0;
-  state.reviewCompletedCount = 0;
   state.currentReviewHadForget = false;
+  state.reviewCompletedCount = 0;
   state.reviewQueue = [];
   state.showAnswer = false;
 
@@ -159,6 +158,7 @@ function handleReviewAction(remembered) {
   );
 
   const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
+
   state.reviewCompletedCount = (state.reviewCompletedCount || 0) + 1;
 
   if (currentIndex >= state.reviewQueue.length - 1) {
@@ -200,6 +200,7 @@ function finishReviewList() {
   state.reviewStage = "lists";
   state.reviewListId = null;
   state.currentReviewWordId = null;
+  state.reviewCompletedCount = 0;
   state.currentReviewHadForget = false;
   state.reviewQueue = [];
   state.showAnswer = false;
@@ -222,7 +223,6 @@ function renderReviewPage() {
     topTitle.textContent = "选择要复习的词书";
     booksBox.classList.remove("hidden");
     renderReviewBookPicker();
-    state.reviewCompletedCount = 0;
     document.getElementById("reviewProgressText").textContent = "00/00";
     document.getElementById("reviewRemainingText").textContent = "00/00";
     document.getElementById("reviewProgressFill").style.width = "0%";
@@ -234,7 +234,6 @@ function renderReviewPage() {
     topTitle.textContent = book ? `选择 list：${book.name}` : "选择 list";
     listsBox.classList.remove("hidden");
     renderReviewListPicker();
-    state.reviewCompletedCount = 0;
     document.getElementById("reviewProgressText").textContent = "00/00";
     document.getElementById("reviewRemainingText").textContent = "00/00";
     document.getElementById("reviewProgressFill").style.width = "0%";

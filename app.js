@@ -778,6 +778,7 @@ function goToPage(page) {
     state.reviewListId = null;
     state.currentReviewWordId = null;
     state.reviewInitialWordTotal = 0;
+    state.reviewCompletedCount = 0;
     state.currentReviewHadForget = false;
     state.reviewQueue = [];
     state.showAnswer = false;
