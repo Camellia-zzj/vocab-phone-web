@@ -135,21 +135,6 @@ function todayDateString() {
   return `${y}-${m}-${d}`;
 }
 
-function getDateOnlyString(dateLike) {
-  const d = new Date(dateLike);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function isReviewDue(dateLike) {
-  if (!dateLike) return true;
-  const today = todayDateString();
-  const targetDate = getDateOnlyString(dateLike);
-  return targetDate <= today;
-}
-
 function addDaysISO(days) {
   const date = new Date();
   date.setDate(date.getDate() + days);
@@ -305,7 +290,8 @@ function getCurrentBook() {
 }
 
 function countNeedReviewLists() {
-  return state.lists.filter((l) => isReviewDue(l.nextReviewAt)).length;
+  const now = Date.now();
+  return state.lists.filter((l) => new Date(l.nextReviewAt).getTime() <= now).length;
 }
 
 function countTodayWords() {
@@ -716,7 +702,7 @@ function getFilteredAffixItems(keyword = "") {
     const typeOrder = { prefix: 1, root: 2, suffix: 3 };
     const typeDiff = (typeOrder[a.type] || 99) - (typeOrder[b.type] || 99);
     if (typeDiff !== 0) return typeDiff;
-    return String(a.affix).localeCompare(String(a.affix), "zh-CN");
+    return String(a.affix).localeCompare(String(b.affix), "zh-CN");
   });
 
   return filtered;
@@ -1250,7 +1236,8 @@ function backReviewLevel() {
 function renderReviewBooks(container) {
   const books = state.books.map((book) => {
     const lists = getListsByBookId(book.id);
-    const dueCount = lists.filter((l) => isReviewDue(l.nextReviewAt)).length;
+    const now = Date.now();
+    const dueCount = lists.filter((l) => new Date(l.nextReviewAt).getTime() <= now).length;
     return { book, dueCount, totalLists: lists.length };
   });
 
@@ -1279,11 +1266,12 @@ function renderReviewLists(container) {
     return;
   }
 
+  const now = Date.now();
   const lists = getListsByBookId(book.id)
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .map((list) => ({
       list,
-      due: isReviewDue(list.nextReviewAt),
+      due: new Date(list.nextReviewAt).getTime() <= now,
       wordCount: getWordsByListId(list.id).length,
     }));
 
@@ -1295,7 +1283,7 @@ function renderReviewLists(container) {
         <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
           <div>
             <div><strong>${escapeHtml(list.name)}</strong></div>
-            <div class="small muted" style="margin-top:6px;">${wordCount} 个单词｜${due ? "现在可复习" : `下次复习：${getDateOnlyString(list.nextReviewAt)}`}</div>
+            <div class="small muted" style="margin-top:6px;">${wordCount} 个单词｜${due ? "现在可复习" : `下次复习：${new Date(list.nextReviewAt).toLocaleString()}`}</div>
           </div>
           <div class="list-actions">
             <button class="blue" onclick="startReviewList('${list.id}')">开始</button>
@@ -1773,6 +1761,7 @@ function clearAllReviewRecords() {
   saveData();
   renderApp();
 }
+
 
 function bindLibrarySearchEvents() {
   const input = document.getElementById("searchInput");
