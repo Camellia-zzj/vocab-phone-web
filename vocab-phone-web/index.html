@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#0f172a" />
+  <title>艾宾浩斯记单词助手 - 手机版</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- 首页 -->
+    <section id="page-home" class="page active">
+      <header class="phone-header">
+        <div>
+          <h1>记单词助手</h1>
+          <p>词书 → list → 单词</p>
+        </div>
+      </header>
+
+      <main class="phone-main">
+        <section class="card hero-card">
+          <div class="hero-title">今天开始复习</div>
+          <div class="hero-subtitle">先选词书，再选 list 进入复习</div>
+          <div class="hero-actions">
+            <button class="big-btn" onclick="goToPage('review')">开始复习</button>
+            <button class="big-btn secondary" onclick="goToPage('library')">全部单词</button>
+          </div>
+        </section>
+
+        <section class="stats-grid">
+          <div class="card stat-card">
+            <div class="stat-label">词书数</div>
+            <div class="stat-value" id="bookCount">0</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">list 数</div>
+            <div class="stat-value" id="listCount">0</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">总单词数</div>
+            <div class="stat-value" id="wordCount">0</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label">待复习 list</div>
+            <div class="stat-value" id="dueListCount">0</div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">词书管理</div>
+          <div class="form-stack">
+            <input id="newBookNameInput" placeholder="新词书名字，比如 四级 / 雅思 / 错词本" />
+            <button class="blue" onclick="createBook()">新建词书</button>
+          </div>
+
+          <div class="space"></div>
+
+          <div class="section-title" style="font-size:16px; margin-bottom:10px;">当前词书</div>
+          <select id="currentBookSelect" onchange="changeCurrentBook(this.value)"></select>
+
+          <div class="space"></div>
+          <div id="currentBookSummary" class="pill-note"></div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">添加单词</div>
+          <div class="muted small">
+            新增单词会自动进入“当前词书”下今天日期的 list。
+          </div>
+          <div class="space"></div>
+          <div class="form-stack">
+            <input id="wordInput" placeholder="单词，比如 abandon" />
+            <input id="meaningInput" placeholder="释义，比如 放弃" />
+            <textarea id="exampleInput" placeholder="例句（可选）"></textarea>
+            <textarea id="noteInput" placeholder="备注（可选）"></textarea>
+            <button onclick="addWord()">保存单词</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">批量导入</div>
+          <div class="muted small">每行格式：单词 | 释义 | 例句 | 备注</div>
+          <div class="space"></div>
+          <textarea
+            id="batchInput"
+            placeholder="abandon | 放弃 | He abandoned the plan. | 容易和 give up 联想
+precise | 精确的 | Please give a precise answer. | 注意拼写"
+          ></textarea>
+          <div class="space"></div>
+          <div class="stack-actions">
+            <button onclick="batchAddWords()">批量导入到当前词书的今日日程</button>
+            <button class="secondary" onclick="clearBatchInput()">清空内容</button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title">数据管理</div>
+          <div class="stack-actions">
+            <button class="secondary" onclick="exportData()">导出备份</button>
+            <button class="secondary" onclick="triggerImport()">导入备份</button>
+            <button class="secondary" onclick="clearAllReviewRecords()">清除全部复习记录</button>
+            <input id="importFile" type="file" accept="application/json" style="display:none" />
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <!-- 词书页 -->
+    <section id="page-library" class="page">
+      <header class="phone-header">
+        <div>
+          <h1>词书</h1>
+          <p>词书 → list → 单词</p>
+        </div>
+        <div class="header-actions-inline">
+          <button class="secondary" onclick="goToPage('home')">首页</button>
+        </div>
+      </header>
+
+      <main class="phone-main">
+        <section class="card">
+          <div class="section-title-row">
+            <div class="section-title" style="margin-bottom:0;">浏览词书</div>
+            <button class="small-btn secondary" id="libraryBackBtn" onclick="libraryGoBack()">返回上一级</button>
+          </div>
+          <div class="breadcrumb" id="libraryBreadcrumb"></div>
+          <input id="searchInput" placeholder="搜索单词 / list / 词书" oninput="renderLibrary()" />
+        </section>
+
+        <section class="card">
+          <div id="libraryContent"></div>
+        </section>
+      </main>
+    </section>
+
+    <!-- 复习页 -->
+    <section id="page-review" class="page">
+      <div class="review-page">
+        <header class="review-topbar">
+          <button class="secondary" onclick="goToPage('home')">退出复习</button>
+          <div class="review-top-title" id="reviewTopTitle">先选择词书</div>
+        </header>
+
+        <main class="review-center">
+          <div id="reviewSelectBooks" class="card-dark card picker-grid"></div>
+          <div id="reviewSelectLists" class="card-dark card picker-grid hidden"></div>
+
+          <div id="reviewEmptyState" class="review-empty hidden">
+            <div class="review-empty-title">当前 list 复习完成</div>
+            <div class="review-empty-desc">返回上一级可以继续选择其他 list。</div>
+          </div>
+
+          <div id="reviewCard" class="card-dark review-card hidden">
+            <div class="review-level" id="reviewLevelText">Lv.1</div>
+            <div class="review-word" id="reviewWordText">word</div>
+
+            <div class="review-audio-row">
+              <button id="reviewSpeakBtn" class="secondary review-audio-btn" type="button">🔊 发音</button>
+            </div>
+
+            <div id="reviewHintBox" class="review-hint-box">
+              先在脑中回忆意思和用法，再点“显示答案”
+            </div>
+
+            <div id="reviewAnswerBox" class="review-answer-box hidden">
+              <div><strong>释义：</strong><span id="reviewMeaningText"></span></div>
+              <div id="reviewExampleWrap" style="margin-top:10px;">
+                <strong>例句：</strong><span id="reviewExampleText"></span>
+              </div>
+              <div id="reviewNoteWrap" style="margin-top:10px;">
+                <strong>备注：</strong><span id="reviewNoteText"></span>
+              </div>
+            </div>
+
+            <div class="review-actions">
+              <button id="showAnswerBtn" class="secondary review-main-btn" onclick="showCurrentAnswer()">显示答案</button>
+              <button id="rememberBtn" class="review-main-btn success" onclick="handleReviewAction(true)" disabled>√ 我记得</button>
+              <button id="forgetBtn" class="review-main-btn danger" onclick="handleReviewAction(false)" disabled>× 我忘记</button>
+            </div>
+          </div>
+        </main>
+
+        <footer class="review-bottom-bar">
+          <div class="review-bottom-top">
+            <span>当前 list 进度</span>
+            <span id="reviewProgressText">00/00</span>
+          </div>
+          <div class="review-progress-track">
+            <div id="reviewProgressFill" class="review-progress-fill"></div>
+          </div>
+          <div class="review-bottom-foot">
+            <span>剩余单词</span>
+            <span id="reviewRemainingText">00/00</span>
+          </div>
+        </footer>
+      </div>
+    </section>
+  </div>
+
+  <!-- 编辑弹窗 -->
+  <div id="editWordModal" class="modal-overlay hidden">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-title">编辑单词</div>
+      <div class="modal-grid">
+        <div>
+          <label for="editWordInput">单词</label>
+          <div class="input-with-action">
+            <input id="editWordInput" type="text" />
+            <button class="speak-btn-inline" type="button" onclick="speakEditWord()">🔊 发音</button>
+          </div>
+        </div>
+        <div>
+          <label for="editMeaningInput">释义</label>
+          <input id="editMeaningInput" type="text" />
+        </div>
+        <div>
+          <label for="editExampleInput">例句</label>
+          <textarea id="editExampleInput"></textarea>
+        </div>
+        <div>
+          <label for="editNoteInput">备注</label>
+          <textarea id="editNoteInput"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeEditModal()">取消</button>
+        <button class="modal-save" onclick="saveEditedWord()">保存修改</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除弹窗 -->
+  <div id="deleteConfirmModal" class="modal-overlay hidden">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-title">确认删除</div>
+      <div id="deleteConfirmText" style="color:#4b5563; line-height:1.8;">确定删除吗？</div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="closeDeleteModal()">取消</button>
+        <button class="modal-danger" onclick="confirmDeleteEntity()">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./storage.js"></script>
+  <script src="./library.js"></script>
+  <script src="./review.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
