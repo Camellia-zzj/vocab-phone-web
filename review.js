@@ -120,11 +120,6 @@ function getCurrentReviewWord() {
   if (!state.reviewListId) return null;
   if (!state.reviewQueue || !state.reviewQueue.length) return null;
 
-  if (state.currentReviewWordId) {
-    const found = state.words.find((w) => w.id === state.currentReviewWordId);
-    if (found) return found;
-  }
-
   const firstId = state.reviewQueue[0];
   state.currentReviewWordId = firstId || null;
   return state.words.find((w) => w.id === firstId) || null;
@@ -157,19 +152,20 @@ function handleReviewAction(remembered) {
       : w
   );
 
-  const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
+  state.reviewQueue = (state.reviewQueue || []).filter((id) => id !== current.id);
   state.reviewCompletedCount = (state.reviewCompletedCount || 0) + 1;
+  state.currentReviewWordId = state.reviewQueue[0] || null;
+  state.showAnswer = false;
 
-  if (currentIndex >= state.reviewQueue.length - 1) {
+  saveData();
+  renderLibrary();
+
+  if (!state.reviewQueue.length) {
     finishReviewList();
     return;
   }
 
-  state.currentReviewWordId = state.reviewQueue[currentIndex + 1];
-  state.showAnswer = false;
-  saveData();
   renderReviewPage();
-  renderLibrary();
 }
 
 function finishReviewList() {
@@ -306,9 +302,9 @@ function renderReviewPage() {
     forgetBtn.disabled = true;
   }
 
-  const total = state.reviewInitialWordTotal || state.reviewQueue.length || 0;
-  const done = Math.min(state.reviewCompletedCount || 0, total);
-  const remaining = Math.max(total - done, 0);
+  const total = state.reviewInitialWordTotal || 0;
+  const remaining = Math.max((state.reviewQueue || []).length, 0);
+  const done = Math.max(0, Math.min(total - remaining, total));
   let percent = total > 0 ? (done / total) * 100 : 0;
 
   if (done > 0 && percent < 4) {
