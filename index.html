@@ -170,14 +170,18 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
       <main class="phone-main">
         <section class="card">
           <div class="section-title">搜索词根词缀</div>
-          <input
-            id="affixSearchInput"
-            placeholder="搜索词根、词缀、含义或例词，比如 dict / 否定 / pre"
-            oninput="renderAffixes()"
-          />
+          <div class="affix-search-row">
+            <input
+              id="affixSearchInput"
+              placeholder="搜索词根、词缀、含义或例词，比如 dict / 否定 / pre"
+              oninput="handleAffixSearchInput()"
+              onkeydown="handleAffixSearchKeydown(event)"
+            />
+            <button class="secondary" type="button" onclick="openAffixSearchPreview()">查看</button>
+          </div>
           <div class="space"></div>
           <div class="muted small">
-            可以搜索：词根词缀本身、中文意思、记忆提示、例词
+            输入内容后会自动筛选；按回车或点“查看”可弹出小窗口快速查看。
           </div>
         </section>
 
@@ -273,6 +277,15 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
         </footer>
       </div>
     </section>
+  </div>
+
+  <!-- 词根词缀搜索弹窗 -->
+  <div id="affixPreviewModal" class="modal-overlay hidden" onclick="closeAffixPreview()">
+    <div class="modal-box affix-preview-box" onclick="event.stopPropagation()">
+      <button class="modal-close-x" type="button" onclick="closeAffixPreview()" aria-label="关闭">×</button>
+      <div class="modal-title">词根词缀详情</div>
+      <div id="affixPreviewContent"></div>
+    </div>
   </div>
 
   <!-- 编辑单词弹窗 -->

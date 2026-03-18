@@ -23,6 +23,8 @@ window.state = {
   reviewQueue: [],
 
   affixEditingId: null,
+  affixPreviewId: null,
+  affixLastAutoOpenedKeyword: "",
 };
 
 const AFFIX_STORAGE_KEY = "vocab_affixes_mobile_v1";
@@ -577,15 +579,13 @@ function saveAffixItem() {
   alert("已保存词根词缀");
 }
 
-function renderAffixes() {
-  const container = document.getElementById("affixContent");
+function getAffixSearchKeyword() {
   const searchInput = document.getElementById("affixSearchInput");
-  const countText = document.getElementById("affixCountText");
+  return (searchInput ? searchInput.value : "").trim().toLowerCase();
+}
 
-  if (!container) return;
-
-  const keyword = (searchInput ? searchInput.value : "").trim().toLowerCase();
-
+function getFilteredAffixItems(keyword = "") {
+  const k = String(keyword || "").trim().toLowerCase();
   const filtered = affixItems.filter((item) => {
     const text = [
       item.type,
@@ -595,7 +595,7 @@ function renderAffixes() {
       ...(item.examples || [])
     ].join(" ").toLowerCase();
 
-    return !keyword || text.includes(keyword);
+    return !k || text.includes(k);
   });
 
   filtered.sort((a, b) => {
@@ -604,6 +604,122 @@ function renderAffixes() {
     if (typeDiff !== 0) return typeDiff;
     return String(a.affix).localeCompare(String(b.affix), "zh-CN");
   });
+
+  return filtered;
+}
+
+function scoreAffixMatch(item, keyword) {
+  const k = String(keyword || "").trim().toLowerCase();
+  if (!k) return -1;
+
+  const affix = String(item.affix || "").toLowerCase();
+  const meaning = String(item.meaning || "").toLowerCase();
+  const note = String(item.note || "").toLowerCase();
+  const examples = (item.examples || []).join(" ").toLowerCase();
+
+  if (affix === k) return 100;
+  if (affix.replace(/[-\s/]/g, "") === k.replace(/[-\s/]/g, "")) return 95;
+  if (affix.startsWith(k)) return 88;
+  if (affix.includes(k)) return 80;
+  if (meaning.includes(k)) return 70;
+  if (note.includes(k)) return 60;
+  if (examples.includes(k)) return 50;
+  return -1;
+}
+
+function findBestAffixMatch(keyword) {
+  const filtered = getFilteredAffixItems(keyword);
+  if (!filtered.length) return null;
+
+  const ranked = filtered
+    .map((item) => ({ item, score: scoreAffixMatch(item, keyword) }))
+    .filter((x) => x.score >= 0)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked.length ? ranked[0].item : filtered[0];
+}
+
+function buildAffixPreviewHtml(item) {
+  return `
+    <div class="affix-preview-type">${escapeHtml(getAffixTypeText(item.type))}</div>
+    <div class="affix-preview-word">${escapeHtml(item.affix)}</div>
+    <div class="affix-preview-section"><strong>意思：</strong>${escapeHtml(item.meaning || "")}</div>
+    ${item.note ? `<div class="affix-preview-section"><strong>记忆提示：</strong>${escapeHtml(item.note)}</div>` : ""}
+    ${(item.examples || []).length ? `<div class="affix-preview-section"><strong>例词：</strong>${escapeHtml(item.examples.join(" / "))}</div>` : ""}
+    <div class="affix-preview-actions">
+      <button class="secondary" type="button" onclick="closeAffixPreview()">返回上一级</button>
+    </div>
+  `;
+}
+
+function openAffixPreviewById(id) {
+  const item = affixItems.find((x) => x.id === id);
+  if (!item) return;
+
+  const modal = document.getElementById("affixPreviewModal");
+  const content = document.getElementById("affixPreviewContent");
+  if (!modal || !content) return;
+
+  state.affixPreviewId = id;
+  content.innerHTML = buildAffixPreviewHtml(item);
+  modal.classList.remove("hidden");
+}
+
+function closeAffixPreview() {
+  const modal = document.getElementById("affixPreviewModal");
+  if (modal) modal.classList.add("hidden");
+  state.affixPreviewId = null;
+}
+
+function openAffixSearchPreview() {
+  const keyword = getAffixSearchKeyword();
+  if (!keyword) {
+    alert("请先输入要搜索的词根词缀");
+    return;
+  }
+
+  const bestMatch = findBestAffixMatch(keyword);
+  if (!bestMatch) {
+    alert("没有搜到对应的词根词缀");
+    return;
+  }
+
+  state.affixLastAutoOpenedKeyword = keyword;
+  openAffixPreviewById(bestMatch.id);
+}
+
+function handleAffixSearchInput() {
+  renderAffixes();
+
+  const keyword = getAffixSearchKeyword();
+  if (!keyword || keyword.length < 2) return;
+  if (state.affixLastAutoOpenedKeyword === keyword) return;
+
+  const bestMatch = findBestAffixMatch(keyword);
+  if (!bestMatch) return;
+
+  const bestScore = scoreAffixMatch(bestMatch, keyword);
+  if (bestScore >= 80) {
+    state.affixLastAutoOpenedKeyword = keyword;
+    openAffixPreviewById(bestMatch.id);
+  }
+}
+
+function handleAffixSearchKeydown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    openAffixSearchPreview();
+  }
+}
+
+function renderAffixes() {
+  const container = document.getElementById("affixContent");
+  const countText = document.getElementById("affixCountText");
+
+  if (!container) return;
+
+  const keyword = getAffixSearchKeyword();
+  const filtered = getFilteredAffixItems(keyword);
 
   if (countText) {
     countText.textContent = `${filtered.length} 条`;
@@ -614,26 +730,31 @@ function renderAffixes() {
     return;
   }
 
-  container.innerHTML = filtered
-    .map((item) => `
-      <div class="word-item">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-          <div>
-            <div><strong>${escapeHtml(item.affix)}</strong></div>
-            <div class="small muted" style="margin-top:6px;">${escapeHtml(getAffixTypeText(item.type))}</div>
-          </div>
-          <div class="list-actions">
-            <button class="secondary" onclick="editAffixItem('${item.id}')">编辑</button>
-            <button class="danger" onclick="deleteAffixItem('${item.id}')">删除</button>
-          </div>
-        </div>
+  container.innerHTML = `
+    <div class="affix-scroll-box">
+      ${filtered
+        .map((item) => `
+          <div class="word-item">
+            <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+              <div style="flex:1; min-width:0;">
+                <div><strong>${escapeHtml(item.affix)}</strong></div>
+                <div class="small muted" style="margin-top:6px;">${escapeHtml(getAffixTypeText(item.type))}</div>
+              </div>
+              <div class="list-actions">
+                <button class="blue" onclick="openAffixPreviewById('${item.id}')">查看</button>
+                <button class="secondary" onclick="editAffixItem('${item.id}')">编辑</button>
+                <button class="danger" onclick="deleteAffixItem('${item.id}')">删除</button>
+              </div>
+            </div>
 
-        <div class="muted" style="margin-top:10px;">意思：${escapeHtml(item.meaning)}</div>
-        ${item.note ? `<div class="small muted" style="margin-top:6px;">记忆提示：${escapeHtml(item.note)}</div>` : ""}
-        ${(item.examples || []).length ? `<div class="small muted" style="margin-top:6px;">例词：${escapeHtml(item.examples.join(" / "))}</div>` : ""}
-      </div>
-    `)
-    .join("");
+            <div class="muted" style="margin-top:10px;">意思：${escapeHtml(item.meaning)}</div>
+            ${item.note ? `<div class="small muted" style="margin-top:6px;">记忆提示：${escapeHtml(item.note)}</div>` : ""}
+            ${(item.examples || []).length ? `<div class="small muted" style="margin-top:6px;">例词：${escapeHtml(item.examples.join(" / "))}</div>` : ""}
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
 }
 
 /* =========================
@@ -1114,6 +1235,11 @@ document.addEventListener("keydown", (e) => {
     }
     if (!deleteModal.classList.contains("hidden")) {
       closeDeleteModal();
+      return;
+    }
+    const affixPreviewModal = document.getElementById("affixPreviewModal");
+    if (affixPreviewModal && !affixPreviewModal.classList.contains("hidden")) {
+      closeAffixPreview();
       return;
     }
   }
