@@ -2,6 +2,24 @@ function pad2(value) {
   return String(value).padStart(2, "0");
 }
 
+function updateReviewProgressUI() {
+  const progressText = document.getElementById("reviewProgressText");
+  const remainingText = document.getElementById("reviewRemainingText");
+  const progressFill = document.getElementById("reviewProgressFill");
+  if (!progressText || !remainingText || !progressFill) return;
+
+  const total = Number(state.reviewInitialWordTotal || 0);
+  const remaining = Math.max(Number((state.reviewQueue || []).length || 0), 0);
+  const done = Math.max(0, Math.min(total - remaining, total));
+  let percent = total > 0 ? (done / total) * 100 : 0;
+
+  if (done > 0 && percent < 4) percent = 4;
+
+  progressText.textContent = `${pad2(done)}/${pad2(total)}`;
+  remainingText.textContent = `${pad2(remaining)}/${pad2(total)}`;
+  progressFill.style.width = `${percent}%`;
+}
+
 function renderReviewBookPicker() {
   const box = document.getElementById("reviewSelectBooks");
   const dueByBook = state.books.map((book) => {
@@ -33,6 +51,7 @@ function renderReviewBookPicker() {
 function openReviewLists(bookId) {
   state.reviewBookId = bookId;
   state.reviewStage = "lists";
+  updateReviewProgressUI();
   renderReviewPage();
 }
 
@@ -117,6 +136,7 @@ function startReviewList(listId) {
   state.currentReviewWordId = state.reviewQueue[0] || null;
   state.currentReviewHadForget = false;
   state.showAnswer = false;
+  updateReviewProgressUI();
   renderReviewPage();
 }
 
@@ -161,8 +181,8 @@ function handleReviewAction(remembered) {
   state.currentReviewWordId = state.reviewQueue[0] || null;
   state.showAnswer = false;
 
+  updateReviewProgressUI();
   saveData();
-  renderLibrary();
 
   if (!state.reviewQueue.length) {
     finishReviewList();
@@ -306,16 +326,5 @@ function renderReviewPage() {
     forgetBtn.disabled = true;
   }
 
-  const total = state.reviewInitialWordTotal || 0;
-  const remaining = Math.max((state.reviewQueue || []).length, 0);
-  const done = Math.max(0, Math.min(total - remaining, total));
-  let percent = total > 0 ? (done / total) * 100 : 0;
-
-  if (done > 0 && percent < 4) {
-    percent = 4;
-  }
-
-  document.getElementById("reviewProgressText").textContent = `${pad2(done)}/${pad2(total)}`;
-  document.getElementById("reviewRemainingText").textContent = `${pad2(remaining)}/${pad2(total)}`;
-  document.getElementById("reviewProgressFill").style.width = `${percent}%`;
+  updateReviewProgressUI();
 }
