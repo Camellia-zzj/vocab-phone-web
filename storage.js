@@ -23,17 +23,23 @@ function addDays(date, days) {
   return d;
 }
 
+function startOfLocalDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 function nextReviewTime(stage, from = new Date()) {
   const i = Math.max(0, Math.min(stage, REVIEW_STEPS.length - 1));
-  return addDays(from, REVIEW_STEPS[i]).toISOString();
+  return startOfLocalDay(addDays(from, REVIEW_STEPS[i])).toISOString();
 }
 
 function fmt(dateStr) {
-  return new Date(dateStr).toLocaleString("zh-CN");
+  return new Date(dateStr).toLocaleDateString("zh-CN");
 }
 
 function isDue(dateStr) {
-  return new Date(dateStr).getTime() <= Date.now();
+  return startOfLocalDay(dateStr).getTime() <= startOfLocalDay(new Date()).getTime();
 }
 
 function loadVoiceSettings() {
