@@ -19,6 +19,7 @@ window.state = {
   reviewListId: null,
   currentReviewWordId: null,
   reviewInitialWordTotal: 0,
+  reviewCompletedCount: 0,
   currentReviewHadForget: false,
   reviewQueue: [],
 

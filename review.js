@@ -38,6 +38,8 @@ function backToReviewBooks() {
   state.reviewListId = null;
   state.currentReviewWordId = null;
   state.reviewInitialWordTotal = 0;
+  state.reviewCompletedCount = 0;
+  state.reviewCompletedCount = 0;
   state.currentReviewHadForget = false;
   state.reviewQueue = [];
   state.showAnswer = false;
@@ -108,6 +110,7 @@ function startReviewList(listId) {
   state.reviewStage = "reviewing";
   state.reviewQueue = buildReviewQueue(listId);
   state.reviewInitialWordTotal = state.reviewQueue.length;
+  state.reviewCompletedCount = 0;
   state.currentReviewWordId = state.reviewQueue[0] || null;
   state.currentReviewHadForget = false;
   state.showAnswer = false;
@@ -156,6 +159,7 @@ function handleReviewAction(remembered) {
   );
 
   const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
+  state.reviewCompletedCount = (state.reviewCompletedCount || 0) + 1;
 
   if (currentIndex >= state.reviewQueue.length - 1) {
     finishReviewList();
@@ -218,6 +222,7 @@ function renderReviewPage() {
     topTitle.textContent = "选择要复习的词书";
     booksBox.classList.remove("hidden");
     renderReviewBookPicker();
+    state.reviewCompletedCount = 0;
     document.getElementById("reviewProgressText").textContent = "00/00";
     document.getElementById("reviewRemainingText").textContent = "00/00";
     document.getElementById("reviewProgressFill").style.width = "0%";
@@ -229,6 +234,7 @@ function renderReviewPage() {
     topTitle.textContent = book ? `选择 list：${book.name}` : "选择 list";
     listsBox.classList.remove("hidden");
     renderReviewListPicker();
+    state.reviewCompletedCount = 0;
     document.getElementById("reviewProgressText").textContent = "00/00";
     document.getElementById("reviewRemainingText").textContent = "00/00";
     document.getElementById("reviewProgressFill").style.width = "0%";
@@ -302,11 +308,12 @@ function renderReviewPage() {
     forgetBtn.disabled = true;
   }
 
-  const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
-  const done = Math.max(currentIndex, 0);
   const total = state.reviewInitialWordTotal || state.reviewQueue.length;
+  const done = Math.min(state.reviewCompletedCount || 0, total);
   const remaining = Math.max(total - done, 0);
-  const percent = total > 0 ? (done / total) * 100 : 0;
+  let percent = total > 0 ? (done / total) * 100 : 0;
+
+  if (done > 0 && percent < 3) percent = 3;
 
   document.getElementById("reviewProgressText").textContent = `${pad2(done)}/${pad2(total)}`;
   document.getElementById("reviewRemainingText").textContent = `${pad2(remaining)}/${pad2(total)}`;
