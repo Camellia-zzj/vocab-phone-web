@@ -17,7 +17,7 @@
       <header class="phone-header">
         <div>
           <h1>记单词助手</h1>
-          <p>词书 → list → 单词</p>
+          <p>词书 → list → 单词 / 词根词缀</p>
         </div>
       </header>
 
@@ -28,6 +28,7 @@
           <div class="hero-actions">
             <button class="big-btn" onclick="goToPage('review')">开始复习</button>
             <button class="big-btn secondary" onclick="goToPage('library')">全部单词</button>
+            <button class="big-btn secondary" onclick="goToPage('affixes')">词根词缀</button>
           </div>
         </section>
 
@@ -144,10 +145,68 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
           </div>
           <div class="breadcrumb" id="libraryBreadcrumb"></div>
           <input id="searchInput" placeholder="搜索单词 / list / 词书" oninput="renderLibrary()" />
+          <div class="space"></div>
+          <div class="muted small">现在在“词书层级”也能直接搜到这个词书里的全部单词了。</div>
         </section>
 
         <section class="card">
           <div id="libraryContent"></div>
+        </section>
+      </main>
+    </section>
+
+    <!-- 词根词缀页 -->
+    <section id="page-affixes" class="page">
+      <header class="phone-header">
+        <div>
+          <h1>词根词缀</h1>
+          <p>支持搜索 / 添加 / 编辑 / 删除</p>
+        </div>
+        <div class="header-actions-inline">
+          <button class="secondary" onclick="goToPage('home')">首页</button>
+        </div>
+      </header>
+
+      <main class="phone-main">
+        <section class="card">
+          <div class="section-title">搜索词根词缀</div>
+          <input
+            id="affixSearchInput"
+            placeholder="搜索词根、词缀、含义或例词，比如 dict / 否定 / pre"
+            oninput="renderAffixes()"
+          />
+          <div class="space"></div>
+          <div class="muted small">
+            可以搜索：词根词缀本身、中文意思、记忆提示、例词
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title" id="affixFormTitle">添加词根词缀</div>
+          <div class="form-stack">
+            <select id="affixTypeInput">
+              <option value="prefix">前缀</option>
+              <option value="root">词根</option>
+              <option value="suffix">后缀</option>
+            </select>
+            <input id="affixTextInput" placeholder="词根/词缀，比如 pre- / dict / -tion" />
+            <input id="affixMeaningInput" placeholder="意思，比如 在前 / 说 / 行为、状态" />
+            <textarea id="affixNoteInput" placeholder="记忆提示，比如 pre- 表示提前、在前"></textarea>
+            <textarea id="affixExamplesInput" placeholder="例词，用 / 隔开，比如 predict / prepare / preview"></textarea>
+
+            <div class="stack-actions">
+              <button onclick="saveAffixItem()" id="affixSaveBtn">保存词根词缀</button>
+              <button class="secondary" type="button" onclick="resetAffixForm()">清空表单</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="section-title-row">
+            <div class="section-title" style="margin-bottom:0;">词根词缀列表</div>
+            <div class="muted small" id="affixCountText">0 条</div>
+          </div>
+          <div id="affixContent"></div>
         </section>
       </main>
     </section>
@@ -216,7 +275,7 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
     </section>
   </div>
 
-  <!-- 编辑弹窗 -->
+  <!-- 编辑单词弹窗 -->
   <div id="editWordModal" class="modal-overlay hidden">
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-title">编辑单词</div>
@@ -248,7 +307,7 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
     </div>
   </div>
 
-  <!-- 删除弹窗 -->
+  <!-- 删除确认弹窗 -->
   <div id="deleteConfirmModal" class="modal-overlay hidden">
     <div class="modal-box" onclick="event.stopPropagation()">
       <div class="modal-title">确认删除</div>
