@@ -23,6 +23,164 @@ window.state = {
   reviewQueue: [],
 };
 
+/* =========================
+   发音：词典音频优先，系统发音兜底
+   只改 app.js 即可，因为这里会覆盖 storage.js 里的 speakWord
+========================= */
+
+const WORD_AUDIO_CACHE = new Map();
+let currentAudio = null;
+
+function normalizeAudioUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("//")) return "https:" + url;
+  if (url.startsWith("http://")) return url.replace("http://", "https://");
+  return url;
+}
+
+function stopCurrentAudio() {
+  if (!currentAudio) return;
+  try {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+  } catch {}
+  currentAudio = null;
+}
+
+function speakBySystemVoice(text) {
+  if (!text || !("speechSynthesis" in window)) {
+    alert("当前浏览器不支持发音功能");
+    return;
+  }
+
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = "en-US";
+  utter.rate = 0.95;
+  utter.pitch = 1;
+  window.speechSynthesis.speak(utter);
+}
+
+async function getDictionaryAudioUrl(word) {
+  const cleanWord = String(word || "").trim().toLowerCase();
+  if (!cleanWord) return "";
+
+  if (WORD_AUDIO_CACHE.has(cleanWord)) {
+    return WORD_AUDIO_CACHE.get(cleanWord);
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(cleanWord)}`
+    );
+
+    if (!res.ok) {
+      WORD_AUDIO_CACHE.set(cleanWord, "");
+      return "";
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) {
+      WORD_AUDIO_CACHE.set(cleanWord, "");
+      return "";
+    }
+
+    const candidates = [];
+
+    for (const entry of data) {
+      if (!entry || !Array.isArray(entry.phonetics)) continue;
+
+      for (const p of entry.phonetics) {
+        const audio = normalizeAudioUrl(p && p.audio ? p.audio : "");
+        if (!audio) continue;
+        candidates.push(audio);
+      }
+    }
+
+    if (!candidates.length) {
+      WORD_AUDIO_CACHE.set(cleanWord, "");
+      return "";
+    }
+
+    const preferred =
+      candidates.find((url) => /-us\.mp3|_us_|us\.mp3/i.test(url)) ||
+      candidates.find((url) => /-uk\.mp3|_uk_|uk\.mp3/i.test(url)) ||
+      candidates[0];
+
+    WORD_AUDIO_CACHE.set(cleanWord, preferred || "");
+    return preferred || "";
+  } catch {
+    WORD_AUDIO_CACHE.set(cleanWord, "");
+    return "";
+  }
+}
+
+async function playAudioUrl(url, fallbackText) {
+  return new Promise((resolve) => {
+    try {
+      stopCurrentAudio();
+
+      const audio = new Audio(url);
+      currentAudio = audio;
+
+      let settled = false;
+
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+
+      audio.onended = () => finish(true);
+
+      audio.onerror = () => {
+        stopCurrentAudio();
+        if (fallbackText) speakBySystemVoice(fallbackText);
+        finish(false);
+      };
+
+      const playPromise = audio.play();
+
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise
+          .then(() => finish(true))
+          .catch(() => {
+            stopCurrentAudio();
+            if (fallbackText) speakBySystemVoice(fallbackText);
+            finish(false);
+          });
+      } else {
+        finish(true);
+      }
+    } catch {
+      stopCurrentAudio();
+      if (fallbackText) speakBySystemVoice(fallbackText);
+      resolve(false);
+    }
+  });
+}
+
+async function speakWord(text) {
+  const word = String(text || "").trim();
+  if (!word) return;
+
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+
+  const audioUrl = await getDictionaryAudioUrl(word);
+
+  if (audioUrl) {
+    await playAudioUrl(audioUrl, word);
+    return;
+  }
+
+  speakBySystemVoice(word);
+}
+
 function goToPage(page) {
   state.currentPage = page;
 
