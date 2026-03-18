@@ -38,8 +38,8 @@ function backToReviewBooks() {
   state.reviewListId = null;
   state.currentReviewWordId = null;
   state.reviewInitialWordTotal = 0;
-  state.currentReviewHadForget = false;
   state.reviewCompletedCount = 0;
+  state.currentReviewHadForget = false;
   state.reviewQueue = [];
   state.showAnswer = false;
 
@@ -157,9 +157,9 @@ function handleReviewAction(remembered) {
       : w
   );
 
-  const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
-
   state.reviewCompletedCount = (state.reviewCompletedCount || 0) + 1;
+
+  const currentIndex = state.reviewQueue.findIndex((id) => id === current.id);
 
   if (currentIndex >= state.reviewQueue.length - 1) {
     finishReviewList();
@@ -307,12 +307,12 @@ function renderReviewPage() {
     forgetBtn.disabled = true;
   }
 
-  const total = state.reviewInitialWordTotal || state.reviewQueue.length;
+  const total = state.reviewInitialWordTotal || state.reviewQueue.length || 0;
   const done = Math.min(state.reviewCompletedCount || 0, total);
   const remaining = Math.max(total - done, 0);
   let percent = total > 0 ? (done / total) * 100 : 0;
 
-  if (done > 0 && percent < 3) percent = 3;
+  if (done > 0 && percent < 4) percent = 4;
 
   document.getElementById("reviewProgressText").textContent = `${pad2(done)}/${pad2(total)}`;
   document.getElementById("reviewRemainingText").textContent = `${pad2(remaining)}/${pad2(total)}`;
