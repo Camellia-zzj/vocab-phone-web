@@ -1,5 +1,13 @@
 const STORAGE_KEY = "vocab_book_list_word_mobile_v1";
 const REVIEW_STEPS = [0, 1, 2, 4, 7, 15, 30, 60];
+const VOICE_STORAGE_KEY = "vocab_book_voice_settings_v1";
+
+const voiceState = {
+  voices: [],
+  selectedVoiceURI: "",
+  rate: 0.95,
+  pitch: 1,
+};
 
 function uid(prefix = "id") {
   return prefix + "_" + Date.now().toString() + Math.random().toString(36).slice(2, 8);
@@ -28,15 +36,174 @@ function isDue(dateStr) {
   return new Date(dateStr).getTime() <= Date.now();
 }
 
+function loadVoiceSettings() {
+  try {
+    const raw = localStorage.getItem(VOICE_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (typeof data.selectedVoiceURI === "string") {
+      voiceState.selectedVoiceURI = data.selectedVoiceURI;
+    }
+    if (typeof data.rate === "number" && Number.isFinite(data.rate)) {
+      voiceState.rate = Math.max(0.6, Math.min(1.2, data.rate));
+    }
+    if (typeof data.pitch === "number" && Number.isFinite(data.pitch)) {
+      voiceState.pitch = Math.max(0.8, Math.min(1.2, data.pitch));
+    }
+  } catch {}
+}
+
+function saveVoiceSettings() {
+  localStorage.setItem(
+    VOICE_STORAGE_KEY,
+    JSON.stringify({
+      selectedVoiceURI: voiceState.selectedVoiceURI,
+      rate: voiceState.rate,
+      pitch: voiceState.pitch,
+    })
+  );
+}
+
+function getPreferredVoice() {
+  if (!voiceState.voices.length) return null;
+
+  const selected = voiceState.voices.find((v) => v.voiceURI === voiceState.selectedVoiceURI);
+  if (selected) return selected;
+
+  return (
+    voiceState.voices.find((v) => /en-(US|GB)/i.test(v.lang) && /natural|siri|google|microsoft|sam|ava|aria|jenny|guy|libby/i.test(v.name)) ||
+    voiceState.voices.find((v) => /en-(US|GB)/i.test(v.lang) && v.default) ||
+    voiceState.voices.find((v) => /en-(US|GB)/i.test(v.lang)) ||
+    voiceState.voices.find((v) => /^en/i.test(v.lang)) ||
+    voiceState.voices[0] ||
+    null
+  );
+}
+
+function populateVoiceOptions() {
+  const select = document.getElementById("voiceSelect");
+  const rateInput = document.getElementById("voiceRateRange");
+  const rateValue = document.getElementById("voiceRateValue");
+  const pitchInput = document.getElementById("voicePitchRange");
+  const pitchValue = document.getElementById("voicePitchValue");
+  const tip = document.getElementById("voiceTip");
+
+  if (!select) return;
+
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  voiceState.voices = [...voices].sort((a, b) => {
+    const aScore = /^en-(US|GB)/i.test(a.lang) ? 1 : 0;
+    const bScore = /^en-(US|GB)/i.test(b.lang) ? 1 : 0;
+    return bScore - aScore || a.name.localeCompare(b.name);
+  });
+
+  if (!voiceState.voices.length) {
+    select.innerHTML = '<option value="">当前设备暂时没有可用英语语音</option>';
+    select.disabled = true;
+    if (tip) tip.textContent = "没有读到可用语音。某些浏览器要在页面点一次按钮后才会加载语音列表。";
+    return;
+  }
+
+  select.disabled = false;
+  const preferred = getPreferredVoice();
+  if (preferred && !voiceState.selectedVoiceURI) {
+    voiceState.selectedVoiceURI = preferred.voiceURI;
+    saveVoiceSettings();
+  }
+
+  select.innerHTML = voiceState.voices
+    .map((voice) => {
+      const selected = voice.voiceURI === voiceState.selectedVoiceURI ? "selected" : "";
+      const tag = voice.default ? " · 默认" : "";
+      return `<option value="${voice.voiceURI}" ${selected}>${voice.name} (${voice.lang})${tag}</option>`;
+    })
+    .join("");
+
+  if (rateInput) rateInput.value = String(voiceState.rate);
+  if (rateValue) rateValue.textContent = Number(voiceState.rate).toFixed(2);
+  if (pitchInput) pitchInput.value = String(voiceState.pitch);
+  if (pitchValue) pitchValue.textContent = Number(voiceState.pitch).toFixed(2);
+  if (tip && preferred) {
+    tip.textContent = `当前推荐声音：${preferred.name}（${preferred.lang}）`;
+  }
+}
+
+function bindVoiceControls() {
+  const select = document.getElementById("voiceSelect");
+  const rateInput = document.getElementById("voiceRateRange");
+  const rateValue = document.getElementById("voiceRateValue");
+  const pitchInput = document.getElementById("voicePitchRange");
+  const pitchValue = document.getElementById("voicePitchValue");
+  const previewBtn = document.getElementById("voicePreviewBtn");
+
+  if (select && !select.dataset.bound) {
+    select.dataset.bound = "1";
+    select.addEventListener("change", (e) => {
+      voiceState.selectedVoiceURI = e.target.value;
+      saveVoiceSettings();
+      populateVoiceOptions();
+    });
+  }
+
+  if (rateInput && !rateInput.dataset.bound) {
+    rateInput.dataset.bound = "1";
+    rateInput.addEventListener("input", (e) => {
+      voiceState.rate = Number(e.target.value);
+      if (rateValue) rateValue.textContent = voiceState.rate.toFixed(2);
+      saveVoiceSettings();
+    });
+  }
+
+  if (pitchInput && !pitchInput.dataset.bound) {
+    pitchInput.dataset.bound = "1";
+    pitchInput.addEventListener("input", (e) => {
+      voiceState.pitch = Number(e.target.value);
+      if (pitchValue) pitchValue.textContent = voiceState.pitch.toFixed(2);
+      saveVoiceSettings();
+    });
+  }
+
+  if (previewBtn && !previewBtn.dataset.bound) {
+    previewBtn.dataset.bound = "1";
+    previewBtn.addEventListener("click", () => {
+      speakWord("example");
+    });
+  }
+}
+
+function initVoiceSystem() {
+  loadVoiceSettings();
+  bindVoiceControls();
+  populateVoiceOptions();
+
+  if ("speechSynthesis" in window && typeof window.speechSynthesis.addEventListener === "function") {
+    window.speechSynthesis.addEventListener("voiceschanged", populateVoiceOptions);
+  }
+}
+
 function speakWord(text) {
   if (!text || !("speechSynthesis" in window)) {
     alert("当前浏览器不支持发音功能");
     return;
   }
+
+  if (!voiceState.voices.length) {
+    voiceState.voices = window.speechSynthesis.getVoices();
+  }
+
   window.speechSynthesis.cancel();
   const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = "en-US";
-  utter.rate = 0.95;
+  const preferred = getPreferredVoice();
+
+  if (preferred) {
+    utter.voice = preferred;
+    utter.lang = preferred.lang || "en-US";
+  } else {
+    utter.lang = "en-US";
+  }
+
+  utter.rate = voiceState.rate;
+  utter.pitch = voiceState.pitch;
   window.speechSynthesis.speak(utter);
 }
 
@@ -260,3 +427,6 @@ function addWordToWrongBook(sourceWord) {
 
   saveData();
 }
+window.addEventListener("DOMContentLoaded", () => {
+  initVoiceSystem();
+});

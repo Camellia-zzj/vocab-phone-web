@@ -98,6 +98,21 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
         </section>
 
         <section class="card">
+          <div class="section-title">发音设置</div>
+          <div class="muted small">可以切换设备里已有的英语语音，并微调语速、音调。</div>
+          <div class="space"></div>
+          <div class="form-stack">
+            <select id="voiceSelect"></select>
+            <div class="muted small" id="voiceTip">正在读取可用语音…</div>
+            <label for="voiceRateRange">语速：<span id="voiceRateValue">0.95</span></label>
+            <input id="voiceRateRange" type="range" min="0.6" max="1.2" step="0.05" value="0.95" />
+            <label for="voicePitchRange">音调：<span id="voicePitchValue">1.00</span></label>
+            <input id="voicePitchRange" type="range" min="0.8" max="1.2" step="0.05" value="1" />
+            <button id="voicePreviewBtn" class="secondary" type="button">试听 example</button>
+          </div>
+        </section>
+
+        <section class="card">
           <div class="section-title">数据管理</div>
           <div class="stack-actions">
             <button class="secondary" onclick="exportData()">导出备份</button>
