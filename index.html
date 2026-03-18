@@ -144,9 +144,12 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
             <button class="small-btn secondary" id="libraryBackBtn" onclick="libraryGoBack()">返回上一级</button>
           </div>
           <div class="breadcrumb" id="libraryBreadcrumb"></div>
-          <input id="searchInput" placeholder="搜索单词 / list / 词书" oninput="renderLibrary()" />
+          <div class="affix-search-row">
+            <input id="searchInput" placeholder="搜索单词 / list / 词书" oninput="handleLibrarySearchInput()" onkeydown="handleLibrarySearchKeydown(event)" />
+            <button class="secondary" type="button" onclick="openLibrarySearchPreview()">查看</button>
+          </div>
           <div class="space"></div>
-          <div class="muted small">现在在“词书层级”也能直接搜到这个词书里的全部单词了。</div>
+          <div class="muted small">输入内容后会自动筛选；按回车或点“查看”可弹出单词小窗口快速查看。</div>
         </section>
 
         <section class="card">
@@ -277,6 +280,16 @@ precise | 精确的 | Please give a precise answer. | 注意拼写"
         </footer>
       </div>
     </section>
+  </div>
+
+
+  <!-- 单词搜索弹窗 -->
+  <div id="wordPreviewModal" class="modal-overlay hidden" onclick="closeWordPreview()">
+    <div class="modal-box affix-preview-box" onclick="event.stopPropagation()">
+      <button class="modal-close-x" type="button" onclick="closeWordPreview()" aria-label="关闭">×</button>
+      <div class="modal-title">单词详情</div>
+      <div id="wordPreviewContent"></div>
+    </div>
   </div>
 
   <!-- 词根词缀搜索弹窗 -->

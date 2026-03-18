@@ -1,3 +1,145 @@
+
+function getLibrarySearchKeyword() {
+  const input = document.getElementById("searchInput");
+  return (input ? input.value : "").trim().toLowerCase();
+}
+
+function getAllMatchedWordsForLibrary(keyword = "") {
+  const q = String(keyword || "").trim().toLowerCase();
+  const results = [];
+
+  state.words.forEach((w) => {
+    if (!q || matchesWordQuery(w, q)) {
+      const list = getListById(w.listId);
+      const book = list ? getBookById(list.bookId) : null;
+      results.push({
+        ...w,
+        __listName: list ? list.name : "",
+        __bookName: book ? book.name : ""
+      });
+    }
+  });
+
+  return results;
+}
+
+function scoreLibraryWordMatch(word, keyword) {
+  const k = String(keyword || "").trim().toLowerCase();
+  if (!k) return -1;
+
+  const wordText = String(word.word || "").toLowerCase();
+  const meaning = String(word.meaning || "").toLowerCase();
+  const example = String(word.example || "").toLowerCase();
+  const note = String(word.note || "").toLowerCase();
+  const listName = String(word.__listName || "").toLowerCase();
+  const bookName = String(word.__bookName || "").toLowerCase();
+
+  if (wordText === k) return 100;
+  if (wordText.startsWith(k)) return 90;
+  if (wordText.includes(k)) return 82;
+  if (meaning.includes(k)) return 72;
+  if (example.includes(k)) return 62;
+  if (note.includes(k)) return 56;
+  if (listName.includes(k)) return 45;
+  if (bookName.includes(k)) return 40;
+  return -1;
+}
+
+function findBestLibraryWordMatch(keyword) {
+  const matched = getAllMatchedWordsForLibrary(keyword);
+  if (!matched.length) return null;
+
+  const ranked = matched
+    .map((item) => ({ item, score: scoreLibraryWordMatch(item, keyword) }))
+    .filter((x) => x.score >= 0)
+    .sort((a, b) => b.score - a.score);
+
+  return ranked.length ? ranked[0].item : matched[0];
+}
+
+function buildWordPreviewHtml(w) {
+  const safeWord = String(w.word || "").replace(/'/g, "\\'");
+  return `
+    <div class="affix-preview-type">${escapeHtml(w.__bookName || "未分组词书")}${w.__listName ? `｜${escapeHtml(w.__listName)}` : ""}</div>
+    <div class="affix-preview-word">${escapeHtml(w.word || "")}</div>
+    <div class="affix-preview-section"><strong>释义：</strong>${escapeHtml(w.meaning || "")}</div>
+    ${w.example ? `<div class="affix-preview-section"><strong>例句：</strong>${escapeHtml(w.example)}</div>` : ""}
+    ${w.note ? `<div class="affix-preview-section"><strong>备注：</strong>${escapeHtml(w.note)}</div>` : ""}
+    <div class="affix-preview-section"><strong>复习次数：</strong>${Number(w.reviewCount || 0)} 次</div>
+    <div class="affix-preview-section"><strong>忘记次数：</strong>${Number(w.lapseCount || 0)} 次</div>
+    <div class="affix-preview-actions word-preview-actions">
+      <button class="secondary" type="button" onclick="speakWord('${safeWord}')">发音</button>
+      <button class="secondary" type="button" onclick="closeWordPreview()">返回上一级</button>
+    </div>
+  `;
+}
+
+function openWordPreviewById(wordId) {
+  const word = state.words.find((w) => w.id === wordId);
+  if (!word) return;
+
+  const list = getListById(word.listId);
+  const book = list ? getBookById(list.bookId) : null;
+  const modal = document.getElementById("wordPreviewModal");
+  const content = document.getElementById("wordPreviewContent");
+  if (!modal || !content) return;
+
+  state.wordPreviewId = wordId;
+  content.innerHTML = buildWordPreviewHtml({
+    ...word,
+    __listName: list ? list.name : "",
+    __bookName: book ? book.name : ""
+  });
+  modal.classList.remove("hidden");
+}
+
+function closeWordPreview() {
+  const modal = document.getElementById("wordPreviewModal");
+  if (modal) modal.classList.add("hidden");
+  state.wordPreviewId = null;
+}
+
+function openLibrarySearchPreview() {
+  const keyword = getLibrarySearchKeyword();
+  if (!keyword) {
+    alert("请先输入要搜索的单词");
+    return;
+  }
+
+  const bestMatch = findBestLibraryWordMatch(keyword);
+  if (!bestMatch) {
+    alert("没有搜到对应的单词");
+    return;
+  }
+
+  state.libraryLastAutoOpenedKeyword = keyword;
+  openWordPreviewById(bestMatch.id);
+}
+
+function handleLibrarySearchInput() {
+  renderLibrary();
+
+  const keyword = getLibrarySearchKeyword();
+  if (!keyword || keyword.length < 2) return;
+  if (state.libraryLastAutoOpenedKeyword === keyword) return;
+
+  const bestMatch = findBestLibraryWordMatch(keyword);
+  if (!bestMatch) return;
+
+  const bestScore = scoreLibraryWordMatch(bestMatch, keyword);
+  if (bestScore >= 82) {
+    state.libraryLastAutoOpenedKeyword = keyword;
+    openWordPreviewById(bestMatch.id);
+  }
+}
+
+function handleLibrarySearchKeydown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    openLibrarySearchPreview();
+  }
+}
+
 function matchesWordQuery(word, q) {
   if (!q) return true;
   return (
@@ -21,6 +163,7 @@ function buildWordItemHtml(w, listName = "") {
       <div class="small muted" style="margin-top:8px;">本词复习次数：${w.reviewCount} 次</div>
       <div class="small muted" style="margin-top:4px;">本词忘记次数：${w.lapseCount} 次</div>
       <div class="list-actions" style="margin-top:12px;">
+        <button class="blue" onclick="openWordPreviewById('${w.id}')">查看</button>
         <button class="secondary" onclick="speakWord('${safeWord}')">发音</button>
         <button class="secondary" onclick="editWord('${w.id}')">编辑</button>
         <button class="danger" onclick="deleteWord('${w.id}')">删除</button>

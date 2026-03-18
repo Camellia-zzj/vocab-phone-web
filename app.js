@@ -24,6 +24,8 @@ window.state = {
 
   affixEditingId: null,
   affixPreviewId: null,
+  wordPreviewId: null,
+  libraryLastAutoOpenedKeyword: "",
   affixLastAutoOpenedKeyword: "",
 };
 
@@ -788,6 +790,7 @@ function goToPage(page) {
     state.libraryListId = null;
     const searchInput = document.getElementById("searchInput");
     if (searchInput) searchInput.value = "";
+    state.libraryLastAutoOpenedKeyword = "";
   }
 
   if (page === "affixes") {
@@ -1240,6 +1243,11 @@ document.addEventListener("keydown", (e) => {
     const affixPreviewModal = document.getElementById("affixPreviewModal");
     if (affixPreviewModal && !affixPreviewModal.classList.contains("hidden")) {
       closeAffixPreview();
+      return;
+    }
+    const wordPreviewModal = document.getElementById("wordPreviewModal");
+    if (wordPreviewModal && !wordPreviewModal.classList.contains("hidden")) {
+      closeWordPreview();
       return;
     }
   }
