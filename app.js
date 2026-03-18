@@ -106,82 +106,58 @@ const DEFAULT_AFFIXES = [
   { id: "affix_69", type: "suffix", affix: "-al", meaning: "……的", note: "形容词后缀", examples: ["natural", "personal", "global"] },
   { id: "affix_70", type: "suffix", affix: "-ous", meaning: "充满……的", note: "形容词后缀", examples: ["dangerous", "famous", "curious"] },
   { id: "affix_71", type: "suffix", affix: "-ive", meaning: "有……倾向的", note: "形容词后缀", examples: ["active", "creative", "effective"] },
-  { id: "affix_72", type: "suffix", affix: "-y", meaning: "有……的", note: "形容词后缀", examples: ["sunny", "rainy", "salty"] },
-  { id: "affix_73", type: "suffix", affix: "-ly", meaning: "……地；具有……性质", note: "副词/形容词后缀", examples: ["quickly", "friendly"] },
-  { id: "affix_74", type: "suffix", affix: "-en", meaning: "使成为；由……制成", note: "动词/形容词后缀", examples: ["widen", "golden"] },
-  { id: "affix_75", type: "suffix", affix: "-ize / -ise", meaning: "使……化", note: "动词后缀", examples: ["realize", "modernize"] },
-  { id: "affix_76", type: "suffix", affix: "-ward / -wards", meaning: "向……", note: "方向", examples: ["forward", "backward", "towards"] },
+  { id: "affix_72", type: "suffix", affix: "-y", meaning: "有……的", note: "形容词后缀", examples: ["rainy", "windy", "sunny"] },
+  { id: "affix_73", type: "suffix", affix: "-ly", meaning: "……地", note: "副词后缀最常见", examples: ["quickly", "slowly", "carefully"] },
+  { id: "affix_74", type: "suffix", affix: "-en", meaning: "使……；变得", note: "动词后缀", examples: ["widen", "strengthen"] },
+  { id: "affix_75", type: "suffix", affix: "-ize / -ise", meaning: "使……化", note: "动词后缀", examples: ["realize", "organize", "modernize"] },
+  { id: "affix_76", type: "suffix", affix: "-ify", meaning: "使……化", note: "动词后缀", examples: ["simplify", "beautify", "classify"] }
 ];
 
 let affixItems = [];
+const WORD_AUDIO_CACHE = new Map();
+let currentAudio = null;
+let availableVoices = [];
 
-const STORAGE_KEY = "vocab_book_list_word_app_v14";
-const WRONG_BOOK_NAME = "错词本";
-const REVIEW_STEPS_DAYS = [1, 2, 4, 7, 15];
-
-function uid(prefix = "id") {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function nowISO() {
-  return new Date().toISOString();
-}
-
-function todayDateString() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function addDaysISO(days) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString();
-}
-
-function escapeHtml(str) {
-  return String(str || "")
+function escapeHtml(text) {
+  return String(text == null ? "" : text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/>/g, "&gt;");
+}
+
+function escapeAttr(text) {
+  return escapeHtml(text).replace(/"/g, "&quot;");
 }
 
 function normalizeExamplesInput(text) {
   return String(text || "")
-    .split(/\n|,|，|;/)
-    .map((x) => x.trim())
+    .split("/")
+    .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function stringifyExamples(examples) {
-  return Array.isArray(examples) ? examples.join(", ") : "";
-}
-
-function loadVoicePrefs() {
-  try {
-    const raw = localStorage.getItem(VOICE_PREFS_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveVoicePrefs(data) {
-  localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(data || {}));
+  return Array.isArray(examples) ? examples.join(" / ") : "";
 }
 
 function loadAffixes() {
+  const raw = localStorage.getItem(AFFIX_STORAGE_KEY);
+  if (!raw) return DEFAULT_AFFIXES.map((item) => ({ ...item }));
   try {
-    const raw = localStorage.getItem(AFFIX_STORAGE_KEY);
-    if (!raw) return [...DEFAULT_AFFIXES];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length ? parsed : [...DEFAULT_AFFIXES];
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data) || !data.length) {
+      return DEFAULT_AFFIXES.map((item) => ({ ...item }));
+    }
+    return data.map((item) => ({
+      id: item.id || uid("affix"),
+      type: item.type || "root",
+      affix: item.affix || "",
+      meaning: item.meaning || "",
+      note: item.note || "",
+      examples: Array.isArray(item.examples) ? item.examples : normalizeExamplesInput(item.examples || "")
+    }));
   } catch {
-    return [...DEFAULT_AFFIXES];
+    return DEFAULT_AFFIXES.map((item) => ({ ...item }));
   }
 }
 
@@ -189,366 +165,291 @@ function saveAffixes() {
   localStorage.setItem(AFFIX_STORAGE_KEY, JSON.stringify(affixItems));
 }
 
-function loadData() {
+function loadVoicePrefs() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { books: [], lists: [], words: [], currentBookId: null };
-    const data = JSON.parse(raw);
-    return {
-      books: Array.isArray(data.books) ? data.books : [],
-      lists: Array.isArray(data.lists) ? data.lists : [],
-      words: Array.isArray(data.words) ? data.words : [],
-      currentBookId: data.currentBookId || null,
-    };
+    return JSON.parse(localStorage.getItem(VOICE_PREFS_KEY) || "{}");
   } catch {
-    return { books: [], lists: [], words: [], currentBookId: null };
+    return {};
   }
 }
 
-function saveData() {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      books: state.books,
-      lists: state.lists,
-      words: state.words,
-      currentBookId: state.currentBookId,
-    })
-  );
-}
+function saveVoicePrefs() {
+  const select = document.getElementById("voiceSelect");
+  const rateRange = document.getElementById("voiceRateRange");
+  const pitchRange = document.getElementById("voicePitchRange");
 
-function getBookById(id) {
-  return state.books.find((b) => b.id === id) || null;
-}
-
-function getListById(id) {
-  return state.lists.find((l) => l.id === id) || null;
-}
-
-function getWordsByListId(listId) {
-  return state.words.filter((w) => w.listId === listId);
-}
-
-function getListsByBookId(bookId) {
-  return state.lists.filter((l) => l.bookId === bookId);
-}
-
-function getWordsByBookId(bookId) {
-  const listIds = getListsByBookId(bookId).map((l) => l.id);
-  return state.words.filter((w) => listIds.includes(w.listId));
-}
-
-function ensureWrongBook() {
-  let wrongBook = state.books.find((b) => b.name === WRONG_BOOK_NAME);
-  if (!wrongBook) {
-    wrongBook = { id: uid("book"), name: WRONG_BOOK_NAME, createdAt: nowISO() };
-    state.books.unshift(wrongBook);
-  }
-
-  const hasList = state.lists.some((l) => l.bookId === wrongBook.id);
-  if (!hasList) {
-    state.lists.push({
-      id: uid("list"),
-      bookId: wrongBook.id,
-      name: "全部错词",
-      dateKey: "wrong-all",
-      createdAt: nowISO(),
-      reviewStage: 0,
-      nextReviewAt: nowISO(),
-      lastReviewedAt: null,
-    });
-  }
-}
-
-function ensureTodayList(bookId) {
-  const today = todayDateString();
-  let list = state.lists.find((l) => l.bookId === bookId && l.dateKey === today);
-  if (!list) {
-    list = {
-      id: uid("list"),
-      bookId,
-      name: `list ${today}`,
-      dateKey: today,
-      createdAt: nowISO(),
-      reviewStage: 0,
-      nextReviewAt: nowISO(),
-      lastReviewedAt: null,
-    };
-    state.lists.unshift(list);
-  }
-  return list;
-}
-
-function setCurrentBook(bookId) {
-  state.currentBookId = bookId;
-  saveData();
-  renderApp();
-}
-
-function getCurrentBook() {
-  return getBookById(state.currentBookId);
-}
-
-function countNeedReviewLists() {
-  const now = Date.now();
-  return state.lists.filter((l) => new Date(l.nextReviewAt).getTime() <= now).length;
-}
-
-function countTodayWords() {
-  const today = todayDateString();
-  return state.words.filter((w) => {
-    const list = getListById(w.listId);
-    return list && list.dateKey === today;
-  }).length;
-}
-
-function openVoiceSettings() {
-  const modal = document.getElementById("voiceSettingsModal");
-  if (modal) modal.classList.remove("hidden");
-  populateVoiceSelects();
-}
-
-function closeVoiceSettings() {
-  const modal = document.getElementById("voiceSettingsModal");
-  if (modal) modal.classList.add("hidden");
-}
-
-function getAvailableEnglishVoices() {
-  const synth = window.speechSynthesis;
-  if (!synth) return [];
-  return synth.getVoices().filter((voice) => {
-    const lang = String(voice.lang || "").toLowerCase();
-    const name = String(voice.name || "").toLowerCase();
-    return lang.startsWith("en") || name.includes("english") || name.includes("uk") || name.includes("us");
-  });
-}
-
-function populateVoiceSelects() {
-  const voiceList = getAvailableEnglishVoices();
-  const prefs = loadVoicePrefs();
-
-  const femaleSelect = document.getElementById("femaleVoiceSelect");
-  const maleSelect = document.getElementById("maleVoiceSelect");
-  if (!femaleSelect || !maleSelect) return;
-
-  const buildOptions = (selectedName, preferMale) => {
-    const filtered = [...voiceList].sort((a, b) => {
-      const aName = String(a.name || "").toLowerCase();
-      const bName = String(b.name || "").toLowerCase();
-      const maleHints = ["male", "david", "mark", "guy", "tom", "daniel"];
-      const femaleHints = ["female", "zira", "susan", "aria", "eva", "emma", "samantha", "jenny"];
-      const aHit = (preferMale ? maleHints : femaleHints).some((h) => aName.includes(h)) ? 1 : 0;
-      const bHit = (preferMale ? maleHints : femaleHints).some((h) => bName.includes(h)) ? 1 : 0;
-      return bHit - aHit;
-    });
-
-    return ['<option value="">系统默认</option>']
-      .concat(
-        filtered.map((voice) => {
-          const selected = selectedName === voice.name ? "selected" : "";
-          return `<option value="${escapeHtml(voice.name)}" ${selected}>${escapeHtml(voice.name)} (${escapeHtml(voice.lang)})</option>`;
-        })
-      )
-      .join("");
+  const prefs = {
+    voiceName: select ? select.value : "",
+    rate: rateRange ? Number(rateRange.value) : 0.95,
+    pitch: pitchRange ? Number(pitchRange.value) : 1
   };
 
-  femaleSelect.innerHTML = buildOptions(prefs.femaleVoiceName || "", false);
-  maleSelect.innerHTML = buildOptions(prefs.maleVoiceName || "", true);
+  localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(prefs));
 }
 
-function saveVoiceSettings() {
-  const femaleVoiceName = document.getElementById("femaleVoiceSelect")?.value || "";
-  const maleVoiceName = document.getElementById("maleVoiceSelect")?.value || "";
-  saveVoicePrefs({ femaleVoiceName, maleVoiceName });
-  alert("发音设置已保存");
-  closeVoiceSettings();
-}
-
-function pickVoiceByStyle(style) {
-  const voices = getAvailableEnglishVoices();
+function applyVoicePrefsToUI() {
   const prefs = loadVoicePrefs();
-  const wantedName = style === "male" ? prefs.maleVoiceName : prefs.femaleVoiceName;
+  const rateRange = document.getElementById("voiceRateRange");
+  const pitchRange = document.getElementById("voicePitchRange");
+  const rateValue = document.getElementById("voiceRateValue");
+  const pitchValue = document.getElementById("voicePitchValue");
+  const select = document.getElementById("voiceSelect");
 
-  if (wantedName) {
-    const matched = voices.find((v) => v.name === wantedName);
-    if (matched) return matched;
+  if (rateRange) rateRange.value = prefs.rate || 0.95;
+  if (pitchRange) pitchRange.value = prefs.pitch || 1;
+  if (rateValue) rateValue.textContent = Number(rateRange ? rateRange.value : 0.95).toFixed(2);
+  if (pitchValue) pitchValue.textContent = Number(pitchRange ? pitchRange.value : 1).toFixed(2);
+
+  if (select && prefs.voiceName) {
+    select.value = prefs.voiceName;
   }
-
-  const hints = style === "male"
-    ? ["male", "david", "mark", "guy", "tom", "daniel"]
-    : ["female", "zira", "susan", "aria", "eva", "emma", "samantha", "jenny"];
-
-  const preferred = voices.find((voice) => {
-    const name = String(voice.name || "").toLowerCase();
-    return hints.some((h) => name.includes(h));
-  });
-
-  return preferred || voices[0] || null;
 }
 
-function speakWord(text, style = null) {
-  if (!text) return;
+function refreshVoiceOptions() {
+  const select = document.getElementById("voiceSelect");
+  const tip = document.getElementById("voiceTip");
+  if (!select || !tip) return;
 
-  if (!("speechSynthesis" in window)) {
-    alert("当前浏览器不支持发音");
+  availableVoices = speechSynthesis.getVoices() || [];
+
+  const englishVoices = availableVoices.filter((voice) =>
+    /^en/i.test(voice.lang || "") || /english/i.test(voice.name || "")
+  );
+
+  const list = englishVoices.length ? englishVoices : availableVoices;
+
+  if (!list.length) {
+    select.innerHTML = `<option value="">没有检测到可用语音</option>`;
+    tip.textContent = "当前设备没有可用语音时，会优先走词典音频。";
     return;
   }
 
-  const synth = window.speechSynthesis;
-  synth.cancel();
+  const prefs = loadVoicePrefs();
 
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-US";
-  utterance.rate = 0.95;
-  utterance.pitch = style === "male" ? 0.9 : 1.05;
+  select.innerHTML = list
+    .map((voice) => `<option value="${escapeAttr(voice.name)}">${escapeHtml(voice.name)} (${escapeHtml(voice.lang || "")})</option>`)
+    .join("");
 
-  const voice = pickVoiceByStyle(style || "female");
-  if (voice) utterance.voice = voice;
+  if (prefs.voiceName && list.some((voice) => voice.name === prefs.voiceName)) {
+    select.value = prefs.voiceName;
+  }
 
-  synth.speak(utterance);
+  tip.textContent = "单词发音优先走词典音频；没有音频时，会使用这里选中的系统语音。";
+  saveVoicePrefs();
 }
 
 function bindVoiceControls() {
-  if (window.__voiceControlsBound) return;
-  window.__voiceControlsBound = true;
+  const select = document.getElementById("voiceSelect");
+  const rateRange = document.getElementById("voiceRateRange");
+  const pitchRange = document.getElementById("voicePitchRange");
+  const rateValue = document.getElementById("voiceRateValue");
+  const pitchValue = document.getElementById("voicePitchValue");
+  const previewBtn = document.getElementById("voicePreviewBtn");
 
-  if (window.speechSynthesis) {
-    window.speechSynthesis.onvoiceschanged = () => {
-      populateVoiceSelects();
-    };
+  if (!select || select.dataset.bound === "1") return;
+  select.dataset.bound = "1";
+
+  applyVoicePrefsToUI();
+  refreshVoiceOptions();
+
+  select.addEventListener("change", saveVoicePrefs);
+
+  if (rateRange) {
+    rateRange.addEventListener("input", () => {
+      if (rateValue) rateValue.textContent = Number(rateRange.value).toFixed(2);
+      saveVoicePrefs();
+    });
   }
+
+  if (pitchRange) {
+    pitchRange.addEventListener("input", () => {
+      if (pitchValue) pitchValue.textContent = Number(pitchRange.value).toFixed(2);
+      saveVoicePrefs();
+    });
+  }
+
+  if (previewBtn) {
+    previewBtn.addEventListener("click", () => {
+      speakBySystemVoice("example");
+    });
+  }
+
+  if ("speechSynthesis" in window) {
+    speechSynthesis.onvoiceschanged = refreshVoiceOptions;
+    refreshVoiceOptions();
+  }
+}
+
+function getSelectedVoice() {
+  const select = document.getElementById("voiceSelect");
+  const voiceName = select ? select.value : "";
+  return availableVoices.find((voice) => voice.name === voiceName) || null;
 }
 
 /* =========================
-   首页统计 / 当前词书 / 加词
+   发音：词典音频优先，系统发音兜底
 ========================= */
 
-function renderHomeStats() {
-  const totalBooksEl = document.getElementById("totalBooks");
-  const totalWordsEl = document.getElementById("totalWords");
-  const needReviewEl = document.getElementById("needReviewCount");
-  const todayCountEl = document.getElementById("todayCount");
-
-  if (totalBooksEl) totalBooksEl.textContent = state.books.length;
-  if (totalWordsEl) totalWordsEl.textContent = state.words.length;
-  if (needReviewEl) needReviewEl.textContent = countNeedReviewLists();
-  if (todayCountEl) todayCountEl.textContent = countTodayWords();
+function normalizeAudioUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("//")) return "https:" + url;
+  if (url.startsWith("http://")) return url.replace("http://", "https://");
+  return url;
 }
 
-function renderCurrentBookPanel() {
-  const currentBookInfo = document.getElementById("currentBookInfo");
-  const currentBookTitle = document.getElementById("currentBookTitle");
-  const currentBookMeta = document.getElementById("currentBookMeta");
-
-  const book = getCurrentBook();
-  if (!currentBookInfo || !currentBookTitle || !currentBookMeta) return;
-
-  if (!book) {
-    currentBookInfo.innerHTML = `<div class="muted">还没有词书，请先创建词书</div>`;
-    currentBookTitle.textContent = "当前词书";
-    currentBookMeta.textContent = "请选择或创建词书后再添加单词";
-    return;
-  }
-
-  const bookWords = getWordsByBookId(book.id);
-  const bookLists = getListsByBookId(book.id);
-
-  currentBookTitle.textContent = book.name;
-  currentBookMeta.textContent = `共 ${bookLists.length} 个 list，${bookWords.length} 个单词`;
-
-  currentBookInfo.innerHTML = `
-    <div class="word-item">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-        <div>
-          <div><strong>${escapeHtml(book.name)}</strong></div>
-          <div class="small muted" style="margin-top:6px;">当前添加的单词都会进入这个词书今天的 list</div>
-        </div>
-        <div class="list-actions">
-          <button class="secondary" onclick="goToPage('library')">去全部单词</button>
-        </div>
-      </div>
-    </div>
-  `;
+function stopCurrentAudio() {
+  if (!currentAudio) return;
+  try {
+    currentAudio.pause();
+    currentAudio.currentTime = 0;
+  } catch {}
+  currentAudio = null;
 }
 
-function addBook() {
-  const input = document.getElementById("newBookInput");
-  const name = input.value.trim();
-
-  if (!name) {
-    alert("请输入词书名称");
+function speakBySystemVoice(text) {
+  if (!text || !("speechSynthesis" in window)) {
+    alert("当前浏览器不支持发音功能");
     return;
   }
 
-  const exists = state.books.some((b) => b.name === name);
-  if (exists) {
-    alert("这个词书已经存在");
-    return;
-  }
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
 
-  const book = { id: uid("book"), name, createdAt: nowISO() };
-  state.books.unshift(book);
-  state.currentBookId = book.id;
-  input.value = "";
-  saveData();
-  renderApp();
+  const utter = new SpeechSynthesisUtterance(text);
+  const rateRange = document.getElementById("voiceRateRange");
+  const pitchRange = document.getElementById("voicePitchRange");
+  const selectedVoice = getSelectedVoice();
+
+  utter.lang = selectedVoice ? selectedVoice.lang : "en-US";
+  utter.voice = selectedVoice || null;
+  utter.rate = rateRange ? Number(rateRange.value) : 0.95;
+  utter.pitch = pitchRange ? Number(pitchRange.value) : 1;
+
+  window.speechSynthesis.speak(utter);
 }
 
-function addWord() {
-  const currentBook = getCurrentBook();
-  if (!currentBook) {
-    alert("请先创建或选择一个词书");
-    return;
+async function getDictionaryAudioUrl(word) {
+  const cleanWord = String(word || "").trim().toLowerCase();
+  if (!cleanWord) return "";
+
+  if (WORD_AUDIO_CACHE.has(cleanWord)) {
+    return WORD_AUDIO_CACHE.get(cleanWord);
   }
 
-  const wordInput = document.getElementById("wordInput");
-  const meaningInput = document.getElementById("meaningInput");
-  const exampleInput = document.getElementById("exampleInput");
-  const noteInput = document.getElementById("noteInput");
+  try {
+    const res = await fetch(
+      `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(cleanWord)}`
+    );
 
-  const word = wordInput.value.trim();
-  const meaning = meaningInput.value.trim();
-  const example = exampleInput.value.trim();
-  const note = noteInput.value.trim();
+    if (!res.ok) {
+      WORD_AUDIO_CACHE.set(cleanWord, "");
+      return "";
+    }
 
-  if (!word || !meaning) {
-    alert("单词和释义必须填写");
-    return;
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) {
+      WORD_AUDIO_CACHE.set(cleanWord, "");
+      return "";
+    }
+
+    const candidates = [];
+
+    for (const entry of data) {
+      if (!entry || !Array.isArray(entry.phonetics)) continue;
+      for (const p of entry.phonetics) {
+        const audio = normalizeAudioUrl(p && p.audio ? p.audio : "");
+        if (!audio) continue;
+        candidates.push(audio);
+      }
+    }
+
+    if (!candidates.length) {
+      WORD_AUDIO_CACHE.set(cleanWord, "");
+      return "";
+    }
+
+    const preferred =
+      candidates.find((url) => /-us\.mp3|_us_|us\.mp3/i.test(url)) ||
+      candidates.find((url) => /-uk\.mp3|_uk_|uk\.mp3/i.test(url)) ||
+      candidates[0];
+
+    WORD_AUDIO_CACHE.set(cleanWord, preferred || "");
+    return preferred || "";
+  } catch {
+    WORD_AUDIO_CACHE.set(cleanWord, "");
+    return "";
   }
+}
 
-  const targetList = ensureTodayList(currentBook.id);
-  const now = nowISO();
+async function playAudioUrl(url, fallbackText) {
+  return new Promise((resolve) => {
+    try {
+      stopCurrentAudio();
 
-  state.words.unshift({
-    id: uid("word"),
-    listId: targetList.id,
-    word,
-    meaning,
-    example,
-    note,
-    reviewCount: 0,
-    lapseCount: 0,
-    createdAt: now,
-    updatedAt: now,
+      const audio = new Audio(url);
+      currentAudio = audio;
+
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+
+      audio.onended = () => finish(true);
+      audio.onerror = () => {
+        stopCurrentAudio();
+        if (fallbackText) speakBySystemVoice(fallbackText);
+        finish(false);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.then === "function") {
+        playPromise
+          .then(() => finish(true))
+          .catch(() => {
+            stopCurrentAudio();
+            if (fallbackText) speakBySystemVoice(fallbackText);
+            finish(false);
+          });
+      } else {
+        finish(true);
+      }
+    } catch {
+      stopCurrentAudio();
+      if (fallbackText) speakBySystemVoice(fallbackText);
+      resolve(false);
+    }
   });
-
-  saveData();
-  renderApp();
-
-  wordInput.value = "";
-  meaningInput.value = "";
-  exampleInput.value = "";
-  noteInput.value = "";
-  wordInput.focus();
 }
 
-function handleAddWordKey(e) {
-  if (e.key === "Enter") addWord();
+async function speakWord(text) {
+  const word = String(text || "").trim();
+  if (!word) return;
+
+  try {
+    window.speechSynthesis.cancel();
+  } catch {}
+
+  const audioUrl = await getDictionaryAudioUrl(word);
+  if (audioUrl) {
+    await playAudioUrl(audioUrl, word);
+    return;
+  }
+
+  speakBySystemVoice(word);
 }
 
-function scrollToAddWordSection() {
-  const addSection = document.getElementById("add-word-section");
+/* =========================
+   保存单词后把添加单词区域顶上来
+========================= */
+
+function focusWordInputAfterSave() {
   const wordInput = document.getElementById("wordInput");
+  if (!wordInput) return;
+
+  const addSection = wordInput.closest("section.card");
   const pageHome = document.getElementById("page-home");
 
   setTimeout(() => {
@@ -617,6 +518,7 @@ function editAffixItem(id) {
   if (!item) return;
 
   state.affixEditingId = id;
+
   document.getElementById("affixFormTitle").textContent = "编辑词根词缀";
   document.getElementById("affixSaveBtn").textContent = "保存修改";
   document.getElementById("affixTypeInput").value = item.type || "root";
@@ -877,601 +779,146 @@ function goToPage(page) {
     state.reviewInitialWordTotal = 0;
     state.currentReviewHadForget = false;
     state.reviewQueue = [];
-    renderReviewPage();
+    state.showAnswer = false;
   } else {
     document.body.classList.remove("review-mode");
   }
 
-  if (page === "affixes") {
-    renderAffixes();
-    resetAffixForm();
-    setTimeout(() => {
-      const input = document.getElementById("affixSearchInput");
-      if (input) input.focus();
-    }, 0);
-  }
-
-  if (page === "home") {
-    scrollToAddWordSection();
-  }
-}
-
-/* =========================
-   全部单词 / 搜索 / 预览
-========================= */
-
-function switchLibraryView(view) {
-  state.libraryView = view;
-  if (view === "books") {
-    state.libraryBookId = null;
-    state.libraryListId = null;
-  }
-  renderLibrary();
-}
-
-function enterBook(bookId) {
-  state.libraryView = "lists";
-  state.libraryBookId = bookId;
-  state.libraryListId = null;
-  renderLibrary();
-}
-
-function enterList(listId) {
-  state.libraryView = "words";
-  state.libraryListId = listId;
-  renderLibrary();
-}
-
-function backLibrary() {
-  if (state.libraryView === "words") {
-    state.libraryView = "lists";
-    state.libraryListId = null;
-  } else if (state.libraryView === "lists") {
+  if (page === "library") {
     state.libraryView = "books";
     state.libraryBookId = null;
+    state.libraryListId = null;
+    const searchInput = document.getElementById("searchInput");
+    if (searchInput) searchInput.value = "";
+    state.libraryLastAutoOpenedKeyword = "";
   }
-  renderLibrary();
+
+  if (page === "affixes") {
+    renderAffixes();
+  }
+
+  renderApp();
+  window.scrollTo(0, 0);
 }
 
-function getSearchKeyword() {
-  const input = document.getElementById("searchInput");
-  return (input ? input.value : "").trim().toLowerCase();
+/* =========================
+   首页
+========================= */
+
+function renderHomeStats() {
+  document.getElementById("bookCount").textContent = state.books.length;
+  document.getElementById("listCount").textContent = state.lists.length;
+  document.getElementById("wordCount").textContent = state.words.length;
+  document.getElementById("dueListCount").textContent = getDueLists().length;
 }
 
-function scoreWordMatch(word, keyword) {
-  const k = String(keyword || "").trim().toLowerCase();
-  if (!k) return -1;
+function renderCurrentBookPanel() {
+  const select = document.getElementById("currentBookSelect");
+  const summary = document.getElementById("currentBookSummary");
+  if (!select) return;
 
-  const wordText = String(word.word || "").toLowerCase();
-  const meaning = String(word.meaning || "").toLowerCase();
-  const example = String(word.example || "").toLowerCase();
-  const note = String(word.note || "").toLowerCase();
-
-  if (wordText === k) return 100;
-  if (wordText.startsWith(k)) return 90;
-  if (wordText.includes(k)) return 80;
-  if (meaning.includes(k)) return 70;
-  if (note.includes(k)) return 60;
-  if (example.includes(k)) return 50;
-  return -1;
-}
-
-function getAllSearchableWords(keyword = "") {
-  const k = String(keyword || "").trim().toLowerCase();
-  return [...state.words]
-    .filter((word) => {
-      const text = [word.word, word.meaning, word.example, word.note].join(" ").toLowerCase();
-      return !k || text.includes(k);
+  select.innerHTML = state.books
+    .map((book) => {
+      const suffix = book.name === "错词本" ? "（错词本）" : "";
+      return `<option value="${book.id}" ${book.id === state.currentBookId ? "selected" : ""}>${escapeHtml(book.name)}${suffix}</option>`;
     })
-    .sort((a, b) => {
-      const scoreDiff = scoreWordMatch(b, k) - scoreWordMatch(a, k);
-      if (scoreDiff !== 0) return scoreDiff;
-      return String(a.word || "").localeCompare(String(b.word || ""), "en");
-    });
-}
+    .join("");
 
-function findBestLibraryWordMatch(keyword) {
-  const filtered = getAllSearchableWords(keyword);
-  if (!filtered.length) return null;
-  const ranked = filtered
-    .map((item) => ({ item, score: scoreWordMatch(item, keyword) }))
-    .filter((x) => x.score >= 0)
-    .sort((a, b) => b.score - a.score);
-  return ranked.length ? ranked[0].item : filtered[0];
-}
-
-function buildWordPreviewHtml(word) {
-  const list = getListById(word.listId);
-  const book = list ? getBookById(list.bookId) : null;
-
-  return `
-    <div class="affix-preview-type">单词详情</div>
-    <div class="affix-preview-word">${escapeHtml(word.word)}</div>
-    <div class="affix-preview-section"><strong>释义：</strong>${escapeHtml(word.meaning || "")}</div>
-    ${word.example ? `<div class="affix-preview-section"><strong>例句：</strong>${escapeHtml(word.example)}</div>` : ""}
-    ${word.note ? `<div class="affix-preview-section"><strong>备注：</strong>${escapeHtml(word.note)}</div>` : ""}
-    ${book ? `<div class="affix-preview-section"><strong>所属词书：</strong>${escapeHtml(book.name)}</div>` : ""}
-    ${list ? `<div class="affix-preview-section"><strong>所属 list：</strong>${escapeHtml(list.name)}</div>` : ""}
-    <div class="affix-preview-actions" style="display:flex; gap:10px; flex-wrap:wrap;">
-      <button class="secondary" type="button" onclick="speakWord('${escapeHtml(word.word).replace(/&#39;/g, "\\'")}')">发音</button>
-      <button class="secondary" type="button" onclick="closeWordPreview()">返回上一级</button>
-    </div>
-  `;
-}
-
-function openWordPreviewById(wordId) {
-  const word = state.words.find((x) => x.id === wordId);
-  if (!word) return;
-
-  const modal = document.getElementById("wordPreviewModal");
-  const content = document.getElementById("wordPreviewContent");
-  if (!modal || !content) return;
-
-  state.wordPreviewId = wordId;
-  content.innerHTML = buildWordPreviewHtml(word);
-  modal.classList.remove("hidden");
-}
-
-function closeWordPreview() {
-  const modal = document.getElementById("wordPreviewModal");
-  if (modal) modal.classList.add("hidden");
-  state.wordPreviewId = null;
-}
-
-function openLibrarySearchPreview() {
-  const keyword = getSearchKeyword();
-  if (!keyword) {
-    alert("请先输入要搜索的单词");
-    return;
-  }
-
-  const bestMatch = findBestLibraryWordMatch(keyword);
-  if (!bestMatch) {
-    alert("没有搜到对应的单词");
-    return;
-  }
-
-  state.libraryLastAutoOpenedKeyword = keyword;
-  openWordPreviewById(bestMatch.id);
-}
-
-function handleLibrarySearchInput() {
-  renderLibrary();
-
-  const keyword = getSearchKeyword();
-  if (!keyword || keyword.length < 2) return;
-  if (state.libraryLastAutoOpenedKeyword === keyword) return;
-
-  const bestMatch = findBestLibraryWordMatch(keyword);
-  if (!bestMatch) return;
-
-  const bestScore = scoreWordMatch(bestMatch, keyword);
-  if (bestScore >= 80) {
-    state.libraryLastAutoOpenedKeyword = keyword;
-    openWordPreviewById(bestMatch.id);
-  }
-}
-
-function handleLibrarySearchKeydown(event) {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    openLibrarySearchPreview();
-  }
-}
-
-function renderLibrary() {
-  const content = document.getElementById("libraryContent");
-  const searchKeyword = getSearchKeyword();
-  if (!content) return;
-
-  if (state.libraryView === "books") {
-    const books = state.books
-      .filter((book) => {
-        if (!searchKeyword) return true;
-        const words = getWordsByBookId(book.id);
-        const matchBookName = String(book.name || "").toLowerCase().includes(searchKeyword);
-        const matchWords = words.some((w) =>
-          [w.word, w.meaning, w.example, w.note].join(" ").toLowerCase().includes(searchKeyword)
-        );
-        return matchBookName || matchWords;
-      });
-
-    if (!books.length) {
-      content.innerHTML = `<div class="muted">没有找到词书</div>`;
-      return;
-    }
-
-    content.innerHTML = books.map((book) => {
-      const bookWords = getWordsByBookId(book.id);
-      const bookLists = getListsByBookId(book.id);
-      return `
-        <div class="word-item">
-          <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-            <div style="flex:1; min-width:0;">
-              <div><strong>${escapeHtml(book.name)}</strong></div>
-              <div class="small muted" style="margin-top:6px;">${bookLists.length} 个 list，${bookWords.length} 个单词</div>
-            </div>
-            <div class="list-actions">
-              <button class="blue" onclick="enterBook('${book.id}')">进入</button>
-              <button class="secondary" onclick="setCurrentBook('${book.id}')">设为当前</button>
-              ${book.name === WRONG_BOOK_NAME ? "" : `<button class="danger" onclick="deleteBook('${book.id}')">删除</button>`}
-            </div>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    return;
-  }
-
-  if (state.libraryView === "lists") {
-    const book = getBookById(state.libraryBookId);
-    if (!book) {
-      content.innerHTML = `<div class="muted">词书不存在</div>`;
-      return;
-    }
-
-    const lists = getListsByBookId(book.id)
-      .filter((list) => {
-        if (!searchKeyword) return true;
-        const words = getWordsByListId(list.id);
-        return (
-          String(list.name || "").toLowerCase().includes(searchKeyword) ||
-          words.some((w) => [w.word, w.meaning, w.example, w.note].join(" ").toLowerCase().includes(searchKeyword))
-        );
-      })
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-
-    content.innerHTML = `
-      <div style="margin-bottom:12px;">
-        <button class="secondary" onclick="backLibrary()">← 返回词书</button>
-      </div>
-      ${lists.length ? lists.map((list) => {
-        const words = getWordsByListId(list.id);
-        return `
-          <div class="word-item">
-            <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-              <div style="flex:1; min-width:0;">
-                <div><strong>${escapeHtml(list.name)}</strong></div>
-                <div class="small muted" style="margin-top:6px;">${words.length} 个单词</div>
-              </div>
-              <div class="list-actions">
-                <button class="blue" onclick="enterList('${list.id}')">进入</button>
-                <button class="secondary" onclick="resetListReview('${list.id}')">重置复习</button>
-                <button class="danger" onclick="deleteList('${list.id}')">删除</button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("") : `<div class="muted">没有找到 list</div>`}
-    `;
-
-    return;
-  }
-
-  if (state.libraryView === "words") {
-    const list = getListById(state.libraryListId);
-    if (!list) {
-      content.innerHTML = `<div class="muted">list 不存在</div>`;
-      return;
-    }
-
-    const words = getWordsByListId(list.id)
-      .filter((w) => {
-        if (!searchKeyword) return true;
-        return [w.word, w.meaning, w.example, w.note].join(" ").toLowerCase().includes(searchKeyword);
-      })
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-
-    content.innerHTML = `
-      <div style="margin-bottom:12px; display:flex; gap:10px; flex-wrap:wrap;">
-        <button class="secondary" onclick="backLibrary()">← 返回 lists</button>
-        <button class="secondary" onclick="resetListReview('${list.id}')">重置本 list 复习</button>
-      </div>
-      ${words.length ? words.map((w) => `
-        <div class="word-item">
-          <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-            <div style="flex:1; min-width:0;">
-              <div style="font-weight:700; font-size:18px;">${escapeHtml(w.word)}</div>
-              <div class="muted" style="margin-top:8px;">${escapeHtml(w.meaning)}</div>
-              ${w.example ? `<div class="small muted" style="margin-top:6px;">例句：${escapeHtml(w.example)}</div>` : ""}
-              ${w.note ? `<div class="small muted" style="margin-top:6px;">备注：${escapeHtml(w.note)}</div>` : ""}
-            </div>
-            <div class="list-actions">
-              <button class="blue" onclick="openWordPreviewById('${w.id}')">查看</button>
-              <button class="secondary" onclick="speakWord('${escapeHtml(w.word).replace(/&#39;/g, "\\'")}')">发音</button>
-              <button class="secondary" onclick="editWord('${w.id}')">编辑</button>
-              <button class="danger" onclick="deleteWord('${w.id}')">删除</button>
-            </div>
-          </div>
-        </div>
-      `).join("") : `<div class="muted">没有找到单词</div>`}
-    `;
-  }
-}
-
-/* =========================
-   复习流程
-========================= */
-
-function renderReviewPage() {
-  const container = document.getElementById("reviewContent");
-  if (!container) return;
-
-  if (state.reviewStage === "books") {
-    renderReviewBooks(container);
-    return;
-  }
-
-  if (state.reviewStage === "lists") {
-    renderReviewLists(container);
-    return;
-  }
-
-  if (state.reviewStage === "reviewing") {
-    renderReviewing(container);
-  }
-}
-
-function enterReviewBook(bookId) {
-  state.reviewStage = "lists";
-  state.reviewBookId = bookId;
-  state.reviewListId = null;
-  renderReviewPage();
-}
-
-function backReviewLevel() {
-  if (state.reviewStage === "lists") {
-    state.reviewStage = "books";
-    state.reviewBookId = null;
-  } else if (state.reviewStage === "reviewing") {
-    state.reviewStage = "lists";
-    state.reviewListId = null;
-    state.currentReviewWordId = null;
-    state.reviewQueue = [];
-  }
-  renderReviewPage();
-}
-
-function renderReviewBooks(container) {
-  const books = state.books.map((book) => {
-    const lists = getListsByBookId(book.id);
-    const now = Date.now();
-    const dueCount = lists.filter((l) => new Date(l.nextReviewAt).getTime() <= now).length;
-    return { book, dueCount, totalLists: lists.length };
-  });
-
-  container.innerHTML = `
-    <div class="page-title">选择要复习的词书</div>
-    ${books.map(({ book, dueCount, totalLists }) => `
-      <div class="word-item">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-          <div>
-            <div><strong>${escapeHtml(book.name)}</strong></div>
-            <div class="small muted" style="margin-top:6px;">共 ${totalLists} 个 list，待复习 ${dueCount} 个</div>
-          </div>
-          <div class="list-actions">
-            <button class="blue" onclick="enterReviewBook('${book.id}')">进入</button>
-          </div>
-        </div>
-      </div>
-    `).join("")}
-  `;
-}
-
-function renderReviewLists(container) {
-  const book = getBookById(state.reviewBookId);
-  if (!book) {
-    container.innerHTML = `<div class="muted">词书不存在</div>`;
-    return;
-  }
-
-  const now = Date.now();
-  const lists = getListsByBookId(book.id)
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-    .map((list) => ({
-      list,
-      due: new Date(list.nextReviewAt).getTime() <= now,
-      wordCount: getWordsByListId(list.id).length,
-    }));
-
-  container.innerHTML = `
-    <div style="margin-bottom:12px;"><button class="secondary" onclick="backReviewLevel()">← 返回词书</button></div>
-    <div class="page-title">${escapeHtml(book.name)}：选择要复习的词表</div>
-    ${lists.map(({ list, due, wordCount }) => `
-      <div class="word-item">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-          <div>
-            <div><strong>${escapeHtml(list.name)}</strong></div>
-            <div class="small muted" style="margin-top:6px;">${wordCount} 个单词｜${due ? "现在可复习" : `下次复习：${new Date(list.nextReviewAt).toLocaleString()}`}</div>
-          </div>
-          <div class="list-actions">
-            <button class="blue" onclick="startReviewList('${list.id}')">开始</button>
-          </div>
-        </div>
-      </div>
-    `).join("")}
-  `;
-}
-
-function startReviewList(listId) {
-  const list = getListById(listId);
-  if (!list) return;
-
-  const words = getWordsByListId(listId);
-  if (!words.length) {
-    alert("这个 list 里还没有单词");
-    return;
-  }
-
-  state.reviewStage = "reviewing";
-  state.reviewListId = listId;
-  state.reviewQueue = [...words].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
-  state.currentReviewWordId = state.reviewQueue[0].id;
-  state.showAnswer = false;
-  state.reviewInitialWordTotal = words.length;
-  state.currentReviewHadForget = false;
-  renderReviewPage();
-}
-
-function getCurrentReviewWord() {
-  return state.words.find((w) => w.id === state.currentReviewWordId) || null;
-}
-
-function showCurrentAnswer() {
-  state.showAnswer = true;
-  renderReviewPage();
-}
-
-function handleReviewAction(forgot) {
-  const current = getCurrentReviewWord();
-  if (!current) return;
-
-  state.words = state.words.map((w) =>
-    w.id === current.id
-      ? {
-          ...w,
-          reviewCount: forgot ? w.reviewCount : (w.reviewCount || 0) + 1,
-          lapseCount: forgot ? (w.lapseCount || 0) + 1 : (w.lapseCount || 0),
-          updatedAt: nowISO(),
-        }
-      : w
-  );
-
-  if (forgot) {
-    addToWrongBook(current);
-    state.currentReviewHadForget = true;
-  }
-
-  state.reviewQueue = state.reviewQueue.filter((w) => w.id !== current.id);
-
-  if (!state.reviewQueue.length) {
-    finishReviewList();
-    return;
-  }
-
-  state.currentReviewWordId = state.reviewQueue[0].id;
-  state.showAnswer = false;
-  renderReviewPage();
-}
-
-function finishReviewList() {
-  const list = getListById(state.reviewListId);
-  if (!list) return;
-
-  const nextStage = Math.min((list.reviewStage || 0) + 1, REVIEW_STEPS_DAYS.length - 1);
-  const days = REVIEW_STEPS_DAYS[nextStage] || REVIEW_STEPS_DAYS[REVIEW_STEPS_DAYS.length - 1];
-
-  state.lists = state.lists.map((l) =>
-    l.id === list.id
-      ? {
-          ...l,
-          reviewStage: nextStage,
-          lastReviewedAt: nowISO(),
-          nextReviewAt: addDaysISO(days),
-        }
-      : l
-  );
-
-  saveData();
-
-  const hadForget = state.currentReviewHadForget;
-  state.reviewQueue = [];
-  state.currentReviewWordId = null;
-  state.reviewStage = "lists";
-  state.currentReviewHadForget = false;
-  renderReviewPage();
-
-  alert(hadForget ? "本轮复习完成，遗忘的单词已加入错词本" : "本轮复习完成");
-}
-
-function renderReviewing(container) {
-  const word = getCurrentReviewWord();
-  const list = getListById(state.reviewListId);
-
-  if (!word || !list) {
-    container.innerHTML = `<div class="muted">复习数据不存在</div>`;
-    return;
-  }
-
-  const progressDone = state.reviewInitialWordTotal - state.reviewQueue.length + 1;
-
-  container.innerHTML = `
-    <div style="margin-bottom:12px; display:flex; justify-content:space-between; gap:12px; align-items:center;">
-      <button class="secondary" onclick="backReviewLevel()">← 返回</button>
-      <div class="small muted">${escapeHtml(list.name)}｜进度 ${progressDone}/${state.reviewInitialWordTotal}</div>
-    </div>
-
-    <div class="review-card">
-      <div class="review-word">${escapeHtml(word.word)}</div>
-      <div class="review-answer ${state.showAnswer ? "" : "hidden"}">
-        <div><strong>释义：</strong>${escapeHtml(word.meaning || "")}</div>
-        ${word.example ? `<div style="margin-top:10px;"><strong>例句：</strong>${escapeHtml(word.example)}</div>` : ""}
-        ${word.note ? `<div style="margin-top:10px;"><strong>备注：</strong>${escapeHtml(word.note)}</div>` : ""}
-      </div>
-
-      <div class="review-actions">
-        <button class="secondary" onclick="speakWord('${escapeHtml(word.word).replace(/&#39;/g, "\\'")}')">发音</button>
-        ${state.showAnswer
-          ? `
-            <button class="danger" onclick="handleReviewAction(true)">忘记了（2）</button>
-            <button class="blue" onclick="handleReviewAction(false)">记住了（1）</button>
-          `
-          : `<button class="blue" onclick="showCurrentAnswer()">显示答案（空格）</button>`}
-      </div>
-    </div>
-  `;
-}
-
-function addToWrongBook(word) {
-  const wrongBook = state.books.find((b) => b.name === WRONG_BOOK_NAME);
-  if (!wrongBook) return;
-
-  let wrongList = state.lists.find((l) => l.bookId === wrongBook.id);
-  if (!wrongList) {
-    wrongList = {
-      id: uid("list"),
-      bookId: wrongBook.id,
-      name: "全部错词",
-      dateKey: "wrong-all",
-      createdAt: nowISO(),
-      reviewStage: 0,
-      nextReviewAt: nowISO(),
-      lastReviewedAt: null,
-    };
-    state.lists.push(wrongList);
-  }
-
-  const exists = state.words.some(
-    (w) =>
-      w.listId === wrongList.id &&
-      String(w.word || "").toLowerCase() === String(word.word || "").toLowerCase() &&
-      String(w.meaning || "") === String(word.meaning || "")
-  );
-  if (exists) return;
-
-  state.words.unshift({
-    id: uid("word"),
-    listId: wrongList.id,
-    word: word.word,
-    meaning: word.meaning,
-    example: word.example || "",
-    note: word.note || "",
-    reviewCount: 0,
-    lapseCount: 0,
-    createdAt: nowISO(),
-    updatedAt: nowISO(),
-  });
-}
-
-/* =========================
-   批量导入 / 导出
-========================= */
-
-function importBatchWords() {
   const currentBook = getCurrentBook();
   if (!currentBook) {
-    alert("请先创建或选择词书");
+    summary.textContent = "当前没有词书";
+    summary.className = "pill-note";
+    return;
+  }
+
+  const bookLists = getListsByBookId(currentBook.id);
+  const count = bookLists.reduce((sum, list) => sum + getWordsByListId(list.id).length, 0);
+
+  summary.textContent = `当前词书：${currentBook.name} ｜ list 数：${bookLists.length} ｜ 单词数：${count}`;
+  summary.className = currentBook.name === "错词本" ? "pill-note book-note-wrong" : "pill-note";
+}
+
+function createBook() {
+  const input = document.getElementById("newBookNameInput");
+  const name = input.value.trim();
+
+  if (!name) {
+    alert("请输入词书名称");
+    return;
+  }
+
+  const newBook = {
+    id: uid("book"),
+    name,
+    createdAt: nowISO(),
+  };
+
+  state.books.unshift(newBook);
+  state.currentBookId = newBook.id;
+  input.value = "";
+
+  saveData();
+  renderApp();
+}
+
+function changeCurrentBook(bookId) {
+  state.currentBookId = bookId;
+  saveData();
+  renderApp();
+}
+
+function addWord() {
+  const currentBook = getCurrentBook();
+  if (!currentBook) {
+    alert("请先创建词书");
+    return;
+  }
+
+  const wordInput = document.getElementById("wordInput");
+  const meaningInput = document.getElementById("meaningInput");
+  const exampleInput = document.getElementById("exampleInput");
+  const noteInput = document.getElementById("noteInput");
+
+  const word = wordInput.value.trim();
+  const meaning = meaningInput.value.trim();
+  const example = exampleInput.value.trim();
+  const note = noteInput.value.trim();
+
+  if (!word || !meaning) {
+    alert("单词和释义必须填写");
+    return;
+  }
+
+  const targetList = ensureTodayList(currentBook.id);
+  const now = nowISO();
+
+  state.words.push({
+    id: uid("word"),
+    listId: targetList.id,
+    word,
+    meaning,
+    example,
+    note,
+    reviewCount: 0,
+    lapseCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  wordInput.value = "";
+  meaningInput.value = "";
+  exampleInput.value = "";
+  noteInput.value = "";
+
+  saveData();
+  renderApp();
+  focusWordInputAfterSave();
+}
+
+function batchAddWords() {
+  const currentBook = getCurrentBook();
+  if (!currentBook) {
+    alert("请先创建词书");
     return;
   }
 
@@ -1715,7 +1162,7 @@ function deleteBook(bookId) {
   const book = getBookById(bookId);
   if (!book) return;
 
-  if (book.name === WRONG_BOOK_NAME) {
+  if (book.name === "错词本") {
     alert("错词本是系统词书，不能直接删除。你可以进入错词本删除里面误加的单词。");
     return;
   }
