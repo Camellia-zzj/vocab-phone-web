@@ -182,29 +182,38 @@ async function speakWord(text) {
 ========================= */
 
 function focusWordInputAfterSave() {
-  const addCard =
-    document.querySelector("#page-home .card") ||
-    document.querySelector(".card");
   const wordInput = document.getElementById("wordInput");
-
   if (!wordInput) return;
 
-  // 先把添加单词模块尽量顶到页面上方
+  // 精准找到“添加单词”这一整块 section.card
+  const addSection = wordInput.closest("section.card");
+  const pageHome = document.getElementById("page-home");
+
+  // 先把添加单词模块顶到页面上方
   setTimeout(() => {
     try {
-      if (addCard) {
-        const rect = addCard.getBoundingClientRect();
-        const absoluteTop = window.scrollY + rect.top;
-        const topOffset = 8; // 顶部留一点空隙，别贴太死
+      if (addSection) {
+        const rect = addSection.getBoundingClientRect();
+        const absoluteTop = window.pageYOffset + rect.top;
+        const topGap = 6;
+
         window.scrollTo({
-          top: Math.max(0, absoluteTop - topOffset),
+          top: Math.max(0, absoluteTop - topGap),
+          behavior: "auto"
+        });
+      } else if (pageHome) {
+        // 兜底：至少滚到首页区域
+        const rect = pageHome.getBoundingClientRect();
+        const absoluteTop = window.pageYOffset + rect.top;
+        window.scrollTo({
+          top: Math.max(0, absoluteTop),
           behavior: "auto"
         });
       }
     } catch {}
-  }, 40);
+  }, 50);
 
-  // 再聚焦单词输入框，弹出键盘
+  // 再聚焦输入框，重新弹出键盘
   setTimeout(() => {
     try {
       wordInput.focus({ preventScroll: true });
@@ -213,10 +222,9 @@ function focusWordInputAfterSave() {
     }
 
     try {
-      const len = wordInput.value.length;
-      wordInput.setSelectionRange(len, len);
+      wordInput.setSelectionRange(0, 0);
     } catch {}
-  }, 140);
+  }, 180);
 }
 
 function goToPage(page) {
