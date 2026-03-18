@@ -21,7 +21,11 @@ window.state = {
   reviewInitialWordTotal: 0,
   currentReviewHadForget: false,
   reviewQueue: [],
+
+  speechSettings: getDefaultSpeechSettings(),
 };
+
+let deferredInstallPrompt = null;
 
 function goToPage(page) {
   state.currentPage = page;
@@ -239,9 +243,11 @@ function importData(event) {
       state.lists = data.lists;
       state.words = data.words;
       state.currentBookId = data.currentBookId || (state.books[0] ? state.books[0].id : null);
+      state.speechSettings = data.speechSettings || getDefaultSpeechSettings();
 
       saveData();
       renderApp();
+      renderSpeechSettings();
       alert("导入成功");
     } catch {
       alert("导入失败，JSON 文件有问题");
@@ -256,7 +262,8 @@ function exportData() {
       books: state.books,
       lists: state.lists,
       words: state.words,
-      currentBookId: state.currentBookId
+      currentBookId: state.currentBookId,
+      speechSettings: state.speechSettings
     }, null, 2)],
     { type: "application/json" }
   );
@@ -434,10 +441,121 @@ function clearAllReviewRecords() {
   renderApp();
 }
 
+function updateSpeechRangeLabels() {
+  const rate = document.getElementById("rateRange");
+  const pitch = document.getElementById("pitchRange");
+  const rateValue = document.getElementById("rateValue");
+  const pitchValue = document.getElementById("pitchValue");
+  if (rate && rateValue) rateValue.textContent = Number(rate.value).toFixed(2);
+  if (pitch && pitchValue) pitchValue.textContent = Number(pitch.value).toFixed(2);
+}
+
+function renderSpeechSettings() {
+  const voiceSelect = document.getElementById("voiceSelect");
+  const rateRange = document.getElementById("rateRange");
+  const pitchRange = document.getElementById("pitchRange");
+  if (!voiceSelect || !rateRange || !pitchRange) return;
+
+  const voices = getAvailableVoices();
+  const settings = getSpeechSettings();
+
+  let options = `<option value="">自动选择更自然的英语音色</option>`;
+  options += voices
+    .map((voice) => {
+      const selected = settings.voiceURI === voice.voiceURI ? "selected" : "";
+      return `<option value="${voice.voiceURI}" ${selected}>${voice.name} ｜ ${voice.lang}</option>`;
+    })
+    .join("");
+
+  voiceSelect.innerHTML = options;
+  rateRange.value = settings.rate;
+  pitchRange.value = settings.pitch;
+  updateSpeechRangeLabels();
+}
+
+function saveSpeechSettingsFromUI() {
+  const voiceSelect = document.getElementById("voiceSelect");
+  const rateRange = document.getElementById("rateRange");
+  const pitchRange = document.getElementById("pitchRange");
+  if (!voiceSelect || !rateRange || !pitchRange) return;
+
+  state.speechSettings = {
+    voiceURI: voiceSelect.value || "",
+    rate: Number(rateRange.value || 0.95),
+    pitch: Number(pitchRange.value || 1.0),
+    lang: "en-US"
+  };
+
+  saveData();
+}
+
+function previewCurrentVoice() {
+  speakWord("abandon, precise, retain");
+}
+
+function setupSpeechVoices() {
+  renderSpeechSettings();
+
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.onvoiceschanged = () => {
+      const current = state.speechSettings?.voiceURI || "";
+      const voices = getAvailableVoices();
+      if (current && !voices.find(v => v.voiceURI === current)) {
+        state.speechSettings.voiceURI = "";
+        saveData();
+      }
+      renderSpeechSettings();
+    };
+  }
+}
+
+function renderInstallButton() {
+  const btn = document.getElementById("installAppBtn");
+  if (!btn) return;
+  if (deferredInstallPrompt) {
+    btn.classList.remove("hidden");
+  } else {
+    btn.classList.add("hidden");
+  }
+}
+
+async function installPWA() {
+  if (deferredInstallPrompt) {
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    renderInstallButton();
+    return;
+  }
+
+  alert("当前浏览器还没有给出安装入口。你也可以在 Chrome 菜单里找“安装应用”或“添加到主屏幕”。");
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+  });
+}
+
+function setupInstallPrompt() {
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    deferredInstallPrompt = event;
+    renderInstallButton();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    renderInstallButton();
+  });
+}
+
 function renderApp() {
   renderHomeStats();
   renderCurrentBookPanel();
   renderLibrary();
+  renderInstallButton();
 
   if (state.currentPage === "review") {
     renderReviewPage();
@@ -485,8 +603,12 @@ document.addEventListener("keydown", (e) => {
   state.lists = data.lists || [];
   state.words = data.words || [];
   state.currentBookId = data.currentBookId || (state.books[0] ? state.books[0].id : null);
+  state.speechSettings = data.speechSettings || getDefaultSpeechSettings();
 
   ensureWrongBook();
   saveData();
+  setupSpeechVoices();
+  setupInstallPrompt();
+  registerServiceWorker();
   renderApp();
 })();

@@ -243,9 +243,9 @@ function renderReviewPage() {
     emptyState.classList.remove("hidden");
     topTitle.textContent = "当前 list 已复习完成";
     document.getElementById("reviewProgressText").textContent =
-      `${pad2(state.reviewInitialWordTotal)}/${pad2(state.reviewInitialWordTotal)}`;
+      `${String(state.reviewInitialWordTotal).padStart(2,'0')}/${String(state.reviewInitialWordTotal).padStart(2,'0')}`;
     document.getElementById("reviewRemainingText").textContent =
-      `00/${pad2(state.reviewInitialWordTotal)}`;
+      `00/${String(state.reviewInitialWordTotal).padStart(2,'0')}`;
     document.getElementById("reviewProgressFill").style.width = "100%";
     return;
   }
@@ -308,7 +308,7 @@ function renderReviewPage() {
   const remaining = Math.max(total - done, 0);
   const percent = total > 0 ? (done / total) * 100 : 0;
 
-  document.getElementById("reviewProgressText").textContent = `${pad2(done)}/${pad2(total)}`;
-  document.getElementById("reviewRemainingText").textContent = `${pad2(remaining)}/${pad2(total)}`;
+  document.getElementById("reviewProgressText").textContent = `${String(done).padStart(2,'0')}/${String(total).padStart(2,'0')}`;
+  document.getElementById("reviewRemainingText").textContent = `${String(remaining).padStart(2,'0')}/${String(total).padStart(2,'0')}`;
   document.getElementById("reviewProgressFill").style.width = `${percent}%`;
 }

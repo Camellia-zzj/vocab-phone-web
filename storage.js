@@ -28,18 +28,6 @@ function isDue(dateStr) {
   return new Date(dateStr).getTime() <= Date.now();
 }
 
-function speakWord(text) {
-  if (!text || !("speechSynthesis" in window)) {
-    alert("当前浏览器不支持发音功能");
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang = "en-US";
-  utter.rate = 0.95;
-  window.speechSynthesis.speak(utter);
-}
-
 function shuffleArray(arr) {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -47,6 +35,80 @@ function shuffleArray(arr) {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+function getDefaultSpeechSettings() {
+  return {
+    voiceURI: "",
+    rate: 0.95,
+    pitch: 1.0,
+    lang: "en-US"
+  };
+}
+
+function getAvailableVoices() {
+  if (!("speechSynthesis" in window)) return [];
+  return window.speechSynthesis.getVoices();
+}
+
+function chooseDefaultVoice(voices) {
+  if (!voices || !voices.length) return null;
+
+  const preferred = voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Google|Samantha|Microsoft|English/i.test(v.name));
+  if (preferred) return preferred;
+
+  const english = voices.find(v => /^en/i.test(v.lang));
+  if (english) return english;
+
+  return voices[0] || null;
+}
+
+function getSpeechSettings() {
+  const saved = state?.speechSettings || getDefaultSpeechSettings();
+  return {
+    voiceURI: saved.voiceURI || "",
+    rate: Number(saved.rate || 0.95),
+    pitch: Number(saved.pitch || 1.0),
+    lang: saved.lang || "en-US"
+  };
+}
+
+function getPreferredVoice() {
+  const voices = getAvailableVoices();
+  if (!voices.length) return null;
+
+  const settings = getSpeechSettings();
+  if (settings.voiceURI) {
+    const exact = voices.find(v => v.voiceURI === settings.voiceURI);
+    if (exact) return exact;
+  }
+
+  return chooseDefaultVoice(voices);
+}
+
+function speakWord(text) {
+  if (!text || !("speechSynthesis" in window)) {
+    alert("当前浏览器不支持网页发音。建议用 Chrome 打开，或者安装到桌面后再试。");
+    return;
+  }
+
+  const voices = getAvailableVoices();
+  if (!voices.length) {
+    // 有些浏览器第一次会晚一点加载 voice 列表
+    window.speechSynthesis.cancel();
+  }
+
+  const utter = new SpeechSynthesisUtterance(text);
+  const settings = getSpeechSettings();
+  const voice = getPreferredVoice();
+
+  utter.lang = voice?.lang || settings.lang || "en-US";
+  utter.rate = settings.rate;
+  utter.pitch = settings.pitch;
+  if (voice) utter.voice = voice;
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
 }
 
 function loadData() {
@@ -64,7 +126,8 @@ function loadData() {
       ],
       lists: [],
       words: [],
-      currentBookId: defaultBookId
+      currentBookId: defaultBookId,
+      speechSettings: getDefaultSpeechSettings()
     };
   }
 
@@ -107,7 +170,8 @@ function loadData() {
           createdAt: w.createdAt || nowISO(),
           updatedAt: w.updatedAt || nowISO(),
         })),
-        currentBookId: defaultBookId
+        currentBookId: defaultBookId,
+        speechSettings: getDefaultSpeechSettings()
       };
     }
 
@@ -130,6 +194,10 @@ function loadData() {
       data.currentBookId = data.books[0].id;
     }
 
+    if (!data.speechSettings) {
+      data.speechSettings = getDefaultSpeechSettings();
+    }
+
     return data;
   } catch {
     const defaultBookId = uid("book");
@@ -143,7 +211,8 @@ function loadData() {
       ],
       lists: [],
       words: [],
-      currentBookId: defaultBookId
+      currentBookId: defaultBookId,
+      speechSettings: getDefaultSpeechSettings()
     };
   }
 }
@@ -155,7 +224,8 @@ function saveData() {
       books: state.books,
       lists: state.lists,
       words: state.words,
-      currentBookId: state.currentBookId
+      currentBookId: state.currentBookId,
+      speechSettings: state.speechSettings
     })
   );
 }
@@ -245,7 +315,7 @@ function addWordToWrongBook(sourceWord) {
 
   const now = nowISO();
 
-  state.words.unshift({
+  state.words.push({
     id: uid("word"),
     listId: targetList.id,
     word: sourceWord.word || "",
