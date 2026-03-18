@@ -658,10 +658,30 @@ button.amber {
   border-radius: 999px;
   border: none;
   background: #e5e7eb;
-  color: #111827;
-  font-size: 24px;
-  line-height: 1;
   cursor: pointer;
+  padding: 0;
+  font-size: 0;
+}
+
+.modal-close-x::before,
+.modal-close-x::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 2.5px;
+  background: #111827;
+  border-radius: 999px;
+  transform-origin: center;
+}
+
+.modal-close-x::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.modal-close-x::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .modal-close-x:hover {
